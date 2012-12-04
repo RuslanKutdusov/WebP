@@ -9,7 +9,7 @@ namespace webp
 namespace utils
 {
 
-char *read_file(const std::string & file_name, uint32_t & file_length_out);
+uint8_t *read_file(const std::string & file_name, uint32_t & file_length_out);
 
 }
 }

@@ -17,9 +17,9 @@ uint32_t get_file_size(FILE * file)
 	return len_long_int;
 }
 
-char *read_file(const std::string & file_name, uint32_t & file_length_out)
+uint8_t *read_file(const std::string & file_name, uint32_t & file_length_out)
 {
-	char *ret = NULL;
+	uint8_t *ret = NULL;
 	FILE *fp = NULL;
 
 #ifdef LINUX
@@ -41,7 +41,7 @@ char *read_file(const std::string & file_name, uint32_t & file_length_out)
 		throw file_operation_exception;
 	}
 
-	ret = new(std::nothrow) char[file_length_out];
+	ret = new(std::nothrow) uint8_t[file_length_out];
 	if (!ret)
 	{
 		fclose(fp);

@@ -2,85 +2,104 @@
 #define VP8_H_
 #include "../platform.h"
 #include "../exception/exception.h"
+#include "../utils/bit_readed.h"
 
 namespace webp
 {
 namespace vp8
 {
 
+class VP8_LOSSLESSS_TRANSFORM
+{
+public:
+	enum TransformType {
+		  PREDICTOR_TRANSFORM			= 0,
+		  COLOR_TRANSFORM				= 1,
+		  SUBTRACT_GREEN				= 2,
+		  COLOR_INDEXING_TRANSFORM		= 3,
+		  TRANSFORM_NUMBER				= 4
+	};
+private:
+	TransformType	type;
+	int				bits;
+	int				xsize;
+	int				ysize;
+	uint32_t*		data;
+	const utils::BitReader & m_bit_reader;
+	VP8_LOSSLESSS_TRANSFORM()
+		: m_bit_reader(utils::BitReader())
+	{
+
+	}
+public:
+	VP8_LOSSLESSS_TRANSFORM(utils::BitReader & bit_reader)
+		: m_bit_reader(bit_reader)
+	{
+
+	}
+	virtual ~VP8_LOSSLESSS_TRANSFORM()
+	{
+
+	}
+};
+
+
+
 class VP8_LOSSLESS_DECODER
 {
 private:
-	enum TransformType {
-		  PREDICTOR_TRANSFORM             = 0,
-		  COLOR_TRANSFORM                 = 1,
-		  SUBTRACT_GREEN                  = 2,
-		  COLOR_INDEXING_TRANSFORM        = 3,
-	};
 private:
+	const uint8_t* const	m_data;
+	uint32_t				m_data_length;
+	uint32_t				m_lossless_stream_length;
+	int32_t					m_image_width;
+	int32_t					m_image_height;
+	int32_t					m_alpha_is_used;
+	int32_t					m_version_number;
+	int32_t					m_applied_transforms;
+	utils::BitReader		m_bit_reader;
+	VP8_LOSSLESSS_TRANSFORM	m_transform;
+
 	VP8_LOSSLESS_DECODER()
+		: m_data(NULL), m_data_length(0), m_transform(m_bit_reader)
 	{
 
 	}
-	char * data;
-	uint32_t data_length;
-	uint64_t bits_readed;
-	uint32_t m_lossless_stream_length;
-	int m_image_width;
-	int m_image_height;
-	int m_alpha_is_used;
-	int m_version_number;
-	char ReadBit()
+	void ReadInfo()
 	{
-		uint32_t byte_index = bits_readed / 8;
-		char byte = data[byte_index];
-		uint32_t bit_index = bits_readed - byte_index * 8;
-		byte >>= bit_index;
-		bits_readed++;
-		return byte & '\1';
-	}
-	template<class T>
-	T ReadBits(const uint32_t & bits_count)
-	{
-		T ret;
-		memset(&ret, 0, sizeof(T));
-		for(uint32_t i = 0; i < bits_count; i++)
-		{
-			ret |= ReadBit() << i;
-		}
-		return ret;
-	}
-public:
-	VP8_LOSSLESS_DECODER(const char * data, uint32_t data_length)
-	{
-		this->data = data;
-		this->data_length = data_length;
-
-		m_lossless_stream_length = ReadBits<uint32_t>(32);
-		char signature = ReadBits<char>(8);
+		m_lossless_stream_length = m_bit_reader.ReadBits(32);
+		char signature = m_bit_reader.ReadBits(8);
 		if (signature != '\x2F')
 			throw exception::UnsupportedVP8();
 
-		m_image_width = ReadBits<int>(14) + 1;
-		m_image_height = ReadBits<int>(14) + 1;
-		m_alpha_is_used = ReadBits<int>(1);
-		m_version_number = ReadBits<int>(3);
+		m_image_width    = m_bit_reader.ReadBits(14) + 1;
+		m_image_height   = m_bit_reader.ReadBits(14) + 1;
+		m_alpha_is_used  = m_bit_reader.ReadBit();
+		m_version_number = m_bit_reader.ReadBits(3);
+	}
+public:
+	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length)
+		: m_data(data), m_data_length(data_length), m_bit_reader(data, data_length), m_transform(m_bit_reader)
+	{
+		ReadInfo();
 
-		while(ReadBit())
+		while(m_bit_reader.ReadBit())
 		{
-			TransformType transform_type = (TransformType)ReadBits<int>(2);
-			int size_bits = ReadBits<int>(3) + 2;
+			/*TransformType transform_type = (TransformType)m_bit_reader.ReadBits(2);
+			int size_bits = m_bit_reader.ReadBits(3) + 2;
 			int block_width = (1 << size_bits);
 			int block_height = (1 << size_bits);
 			#define DIV_ROUND_UP(num, den) ((num) + (den) - 1) / (den)
 			int block_xsize = DIV_ROUND_UP(m_image_width, 1 << size_bits);
-			printf("3\n");
+			int block_xsize2= (m_image_width + (1 << size_bits) - 1) >> size_bits;
+			printf("3\n");*/
 		}
 	}
-	/*int DIV_ROUND_UP(int num, int den)
+	virtual ~VP8_LOSSLESS_DECODER()
 	{
-		return ((num) + (den) - 1) / den;
-	}*/
+
+	}
+	friend class VP8_LOSSLESSS_TRANSFORM;
 };
 
 }

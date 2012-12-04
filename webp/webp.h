@@ -51,13 +51,13 @@ class WebP
 private:
 	uint32_t m_file_size;
 	FILE_FORMAT m_file_format;
-	char * m_vp8_data;
+	uint8_t * m_vp8_data;
 	uint32_t m_vp8_data_length;
 	WebP()
 	{
 
 	}
-	void read_webp_file_header(const char ** iterable_pointer)
+	void read_webp_file_header(const uint8_t ** iterable_pointer)
 	{
 		if (memcmp(*iterable_pointer, "RIFF", 4) != 0)
 			throw exception::InvalidWebPFileFormat();
@@ -70,10 +70,10 @@ private:
 			throw exception::InvalidWebPFileFormat();
 		*iterable_pointer += 4;
 	}
-	void init(const char * encoded_data, uint32_t encoded_data_length)
+	void init(const uint8_t * const encoded_data, uint32_t encoded_data_length)
 	{
 		//чтобы бегать по данным и не потерять указатель на начало буфера
-		const char * iterable_pointer = encoded_data;
+		const uint8_t * iterable_pointer = encoded_data;
 		try
 		{
 			read_webp_file_header(&iterable_pointer);
@@ -89,7 +89,7 @@ private:
 			//m_file_size это размер файла - 8(из заголовка RIFF(4 байта) и file_size(4 байта)),
 			//data_length это m_file_size - 8(из заголовка WEBP(4 байта) и VP8_(4 байта))
 			m_vp8_data_length = m_file_size - 8;
-			m_vp8_data = new char[m_vp8_data_length];
+			m_vp8_data = new uint8_t[m_vp8_data_length];
 			memcpy(m_vp8_data, iterable_pointer, m_vp8_data_length);
 			if (m_file_format == FILE_FORMAT_LOSSLESS)
 			{
@@ -109,7 +109,7 @@ public:
 	WebP(const std::string & file_name)
 	{
 		uint32_t file_length;
-		char * buf;
+		uint8_t * buf;
 		try
 		{
 			buf = utils::read_file(file_name, file_length);
@@ -128,7 +128,7 @@ public:
 			throw e;
 		}
 	}
-	WebP(const char * encoded_data, uint32_t encoded_data_length)
+	WebP(const uint8_t * const encoded_data, uint32_t encoded_data_length)
 	{
 		init(encoded_data, encoded_data_length);
 	}
