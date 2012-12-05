@@ -64,6 +64,15 @@ public:
 	}
 };
 
+class InvalidVP8 : public Exception
+{
+public:
+	virtual ~InvalidVP8()
+	{
+
+	}
+};
+
 }
 }
 
