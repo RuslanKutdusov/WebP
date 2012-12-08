@@ -70,7 +70,7 @@ private:
 			throw exception::InvalidWebPFileFormat();
 		*iterable_pointer += 4;
 	}
-	void init(const uint8_t * const encoded_data, uint32_t encoded_data_length)
+	void init(const uint8_t * const encoded_data)
 	{
 		//чтобы бегать по данным и не потерять указатель на начало буфера
 		const uint8_t * iterable_pointer = encoded_data;
@@ -109,13 +109,13 @@ public:
 	WebP(const std::string & file_name)
 	{
 		uint32_t file_length;
-		uint8_t * buf;
+		uint8_t * buf = NULL;
 		try
 		{
 			buf = utils::read_file(file_name, file_length);
 			if (file_length < WEBP_FILE_HEADER_LENGTH)
 				throw exception::InvalidWebPFileFormat();
-			init(buf, file_length);
+			init(buf);
 		}
 		catch(exception::InvalidWebPFileFormat & e)
 		{
@@ -130,7 +130,9 @@ public:
 	}
 	WebP(const uint8_t * const encoded_data, uint32_t encoded_data_length)
 	{
-		init(encoded_data, encoded_data_length);
+		if (encoded_data_length < WEBP_FILE_HEADER_LENGTH)
+			throw exception::InvalidWebPFileFormat();
+		init(encoded_data);
 	}
 	virtual ~WebP()
 	{

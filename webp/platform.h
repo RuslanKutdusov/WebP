@@ -12,7 +12,6 @@
 #include <string>
 #include <string.h>
 
-
 #ifdef LINUX
 #include <sys/types.h>
 #include <sys/stat.h>

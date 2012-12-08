@@ -15,6 +15,10 @@ private:
 	size_t							m_length;
 	mutable bool					m_eos;
 	mutable bool					m_error;
+	BitReader & operator=(const BitReader&)
+	{
+		return *this;
+	}
 public:
 	BitReader()
 		: m_data(NULL), m_bits_readed(0), m_length(0), m_eos(true), m_error(0)
@@ -33,9 +37,9 @@ public:
 			m_error = true;
 			return 0;
 		}
-		uint32_t byte_index = m_bits_readed / 8;
+		uint64_t byte_index = m_bits_readed / 8;
 		char byte = m_data[byte_index];
-		uint32_t bit_index = m_bits_readed - byte_index * 8;
+		uint64_t bit_index = m_bits_readed - byte_index * 8;
 		byte >>= bit_index;
 		m_bits_readed++;
 		if (byte_index == m_length && m_bits_readed == 8)

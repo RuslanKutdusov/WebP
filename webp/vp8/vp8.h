@@ -3,11 +3,14 @@
 #include "../platform.h"
 #include "../exception/exception.h"
 #include "../utils/bit_readed.h"
+#include "../huffman/huffman.h"
 
 namespace webp
 {
 namespace vp8
 {
+
+#define MAX_COLOR_CACHE_BITS 11
 
 class VP8_LOSSLESS_DECODER_INTERNAL_INTERFACE
 {
@@ -15,10 +18,12 @@ private:
 
 };
 
-class VP8_LOSSLESSS_TRANSFORM
+class VP8_LOSSLESS_DECODER;
+
+class VP8_LOSSLESS_TRANSFORM
 {
 public:
-	enum TransformType {
+	enum Type {
 		  PREDICTOR_TRANSFORM			= 0,
 		  COLOR_TRANSFORM				= 1,
 		  SUBTRACT_GREEN				= 2,
@@ -26,41 +31,48 @@ public:
 		  TRANSFORM_NUMBER				= 4
 	};
 private:
-	TransformType	type;
-	int				bits;
-	int				xsize;
-	int				ysize;
+	Type			type;
+	//int				bits;
+	//int				xsize;
+	//int				ysize;
 	uint32_t*		data;
-	const utils::BitReader & m_bit_reader;
-	VP8_LOSSLESSS_TRANSFORM()
-		: m_bit_reader(utils::BitReader())
+public:
+	VP8_LOSSLESS_TRANSFORM()
+		: type(TRANSFORM_NUMBER), data(NULL)
 	{
 
+	}
+	virtual ~VP8_LOSSLESS_TRANSFORM()
+	{
+
+	}
+	friend class VP8_LOSSLESS_DECODER;
+};
+
+class VP8_LOSSLESS_HUFFMAN
+{
+private:
+	utils::BitReader m_unused;
+	const utils::BitReader & m_bit_reader;
+	VP8_LOSSLESS_HUFFMAN()
+		: m_bit_reader(m_unused)
+	{
+
+	}
+	VP8_LOSSLESS_HUFFMAN & operator=(const VP8_LOSSLESS_HUFFMAN&)
+	{
+		return *this;
 	}
 public:
-	VP8_LOSSLESSS_TRANSFORM(utils::BitReader & bit_reader)
+	VP8_LOSSLESS_HUFFMAN(utils::BitReader & bit_reader)
 		: m_bit_reader(bit_reader)
-	{
-
-	}
-	virtual ~VP8_LOSSLESSS_TRANSFORM()
 	{
 
 	}
 };
 
-
-
 class VP8_LOSSLESS_DECODER
 {
-private:
-	enum TransformType {
-			  PREDICTOR_TRANSFORM			= 0,
-			  COLOR_TRANSFORM				= 1,
-			  SUBTRACT_GREEN				= 2,
-			  COLOR_INDEXING_TRANSFORM		= 3,
-			  TRANSFORM_NUMBER				= 4
-		};
 private:
 	const uint8_t* const	m_data;
 	//байт в m_data
@@ -74,21 +86,25 @@ private:
 	//часто приходится читать m_data по битам
 	utils::BitReader		m_bit_reader;
 
-	VP8_LOSSLESSS_TRANSFORM	m_transform;
+	VP8_LOSSLESS_TRANSFORM	m_transform;
 
-	//размер color cache
-	uint32_t				m_color_cache_size;
 	//применные трансформации,
 	//мл.бит в 1 - применен PREDICTOR_TRANSFORM, иначе  - еще не применялся
 	//след бит в 1 - применен COLOR_TRANSFORM, иначе нет - еще не применялся
 	//след бит в 1 - применен SUBTRACT_GREEN, иначе нет - еще не применялся
 	//след бит в 1 - применен COLOR_INDEXING_TRANSFORM, иначе - еще не применялся
 	int32_t					m_applied_transforms;
+	VP8_LOSSLESS_TRANSFORM m_transforms[VP8_LOSSLESS_TRANSFORM::TRANSFORM_NUMBER];
+	int32_t					m_next_transform;
 
 	VP8_LOSSLESS_DECODER()
-		: m_data(NULL), m_data_length(0), m_transform(m_bit_reader)
+		: m_data(NULL), m_data_length(0)
 	{
 
+	}
+	VP8_LOSSLESS_DECODER & operator=(const VP8_LOSSLESS_DECODER&)
+	{
+		return *this;
 	}
 	/*
 	 * ReadInfo()
@@ -99,7 +115,7 @@ private:
 	void ReadInfo()
 	{
 		m_lossless_stream_length = m_bit_reader.ReadBits(32);
-		char signature = m_bit_reader.ReadBits(8);
+		char signature = (char)m_bit_reader.ReadBits(8);
 		if (signature != '\x2F')
 			throw exception::UnsupportedVP8();
 
@@ -117,38 +133,49 @@ private:
 	void ReadTransform()
 	{
 		//Читаем тип трансформации, которую надо применить
-		TransformType transform_type = (TransformType)m_bit_reader.ReadBits(2);
+		VP8_LOSSLESS_TRANSFORM::Type transform_type = (VP8_LOSSLESS_TRANSFORM::Type)m_bit_reader.ReadBits(2);
 
 		//проверяем, что мы не применяли эту трансформацию
 		if (m_applied_transforms & (1U << transform_type))
 			throw exception::InvalidVP8();
 		m_applied_transforms |= (1U << transform_type);
+		if (m_next_transform == VP8_LOSSLESS_TRANSFORM::TRANSFORM_NUMBER)
+			throw exception::InvalidVP8();
+
+		VP8_LOSSLESS_TRANSFORM & transform = m_transforms[m_next_transform++];
+
+
 		switch (transform_type)
 		{
-			case(PREDICTOR_TRANSFORM):
+			case(VP8_LOSSLESS_TRANSFORM::PREDICTOR_TRANSFORM):
 				{
 					int32_t size_bits = m_bit_reader.ReadBits(3) + 2;
 					#define DIV_ROUND_UP(num, den) ((num) + (den) - 1) / (den)
 					int32_t block_xsize = DIV_ROUND_UP(m_image_width, 1 << size_bits);
 					int32_t block_ysize = DIV_ROUND_UP(m_image_height, 1 << size_bits);
-					ReadEntropyCodedImage();
+					ReadEntropyCodedImage(block_xsize, block_ysize, transform.data);
 				}
 				break;
 			default:
 				throw exception::InvalidVP8();
 		}
 	}
-	void ReadEntropyCodedImage()
+	void ReadEntropyCodedImage(int32_t xsize, int32_t ysize, uint32_t * data)
 	{
 		ReadColorCacheInfo();
 		ReadHuffmanCodes();
 		ReadLZ77CodedImage();
 	}
-	void ReadColorCacheInfo()
+	int ReadColorCacheInfo()
 	{
 		uint32_t color_cache_code_bits = m_bit_reader.ReadBits(4);
 		if (color_cache_code_bits != 0)
-			m_color_cache_size = 1 << color_cache_code_bits;
+		{
+			if (color_cache_code_bits > MAX_COLOR_CACHE_BITS)
+				throw exception::InvalidVP8();
+			return 1 << color_cache_code_bits;
+		}
+		return 0;
 	}
 	void ReadHuffmanCodes()
 	{
@@ -164,8 +191,8 @@ private:
 	}
 public:
 	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length)
-		: m_data(data), m_data_length(data_length), m_bit_reader(data, data_length), m_transform(m_bit_reader),
-		  m_color_cache_size(0), m_applied_transforms(0)
+		: m_data(data), m_data_length(data_length), m_bit_reader(data, data_length),
+		  m_applied_transforms(0), m_next_transform(0)
 	{
 		ReadInfo();
 
@@ -186,7 +213,7 @@ public:
 	{
 
 	}
-	friend class VP8_LOSSLESSS_TRANSFORM;
+	friend class VP8_LOSSLESS_TRANSFORM;
 };
 
 }

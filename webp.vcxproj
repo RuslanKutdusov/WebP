@@ -41,6 +41,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)\..\$(Configuration)\</OutDir>
+    <IntDir>..\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -76,13 +78,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="exception\exception.h" />
-    <ClInclude Include="platform.h" />
-    <ClInclude Include="utils\utils.h" />
+    <ClCompile Include="webp.cpp" />
+    <ClCompile Include="webp\utils\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="utils\utils.cpp" />
-    <ClCompile Include="webp.cpp" />
+    <ClInclude Include="webp\exception\exception.h" />
+    <ClInclude Include="webp\huffman\huffman.h" />
+    <ClInclude Include="webp\platform.h" />
+    <ClInclude Include="webp\utils\bit_readed.h" />
+    <ClInclude Include="webp\utils\utils.h" />
+    <ClInclude Include="webp\vp8\vp8.h" />
+    <ClInclude Include="webp\webp.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
