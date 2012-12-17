@@ -18,13 +18,27 @@ class HuffmanTree;
 class HuffmanTreeNode
 {
 private:
-	int m_symbol;
-	int m_children;
+	int32_t m_symbol;
+	int32_t m_children;
 public:
 	HuffmanTreeNode()
 		: m_children(-1)
 	{
 
+	}
+	HuffmanTreeNode(const HuffmanTreeNode & node)
+		: m_symbol(node.m_symbol), m_children(node.m_children)
+	{
+
+	}
+	HuffmanTreeNode & operator=(const HuffmanTreeNode & node)
+	{
+		if (&node != this)
+		{
+			m_symbol = node.m_symbol;
+			m_children = node.m_children;
+		}
+		return *this;
 	}
 	virtual ~HuffmanTreeNode()
 	{
@@ -34,19 +48,43 @@ public:
 	{
 		return m_children == 0;
 	}
-	HuffmanTreeNode & next_node(int right_child)
-	{
-		return *(this + m_children + right_child);
-	}
-	bool is_empty()
+	bool is_empty() const
 	{
 		return m_children < 0;
+	}
+	int symbol() const
+	{
+		return m_symbol;
 	}
 	friend class HuffmanTree;
 };
 
 class HuffmanTree
 {
+public:
+	class iterator
+	{
+	private:
+		HuffmanTreeNode* m_node;
+		iterator()
+			: m_node(NULL){}
+	public:
+		iterator(const HuffmanTree & tree)
+			: m_node(tree.m_root)
+		{
+
+		}
+		const HuffmanTreeNode& operator*() const
+		{
+			return *m_node;
+		}
+		const HuffmanTreeNode& next(int right)
+		{
+			m_node += m_node->m_children + right;
+			return *m_node;
+		}
+	};
+	friend class iterator;
 private:
 	HuffmanTreeNode*			m_root;   // all the nodes, starting at root.
 	int32_t						m_max_nodes;           // max number of nodes
@@ -54,7 +92,8 @@ private:
 	HuffmanTree()
 		: m_root(NULL)
 	{
-
+		iterator iter(*this);
+		HuffmanTreeNode node = *iter;
 	}
 	int init(const int & num_leaves)
 	{
@@ -80,7 +119,7 @@ private:
 		node->m_children = (int)(children - node);
 		m_num_nodes += 2;
 	}
-	int add_symbol(int symbol, int code, int code_length)
+	int add_symbol(int32_t symbol, int32_t code, int32_t code_length)
 	{
 		HuffmanTreeNode* node = m_root;
 		const HuffmanTreeNode* const max_node = m_root + m_max_nodes;
@@ -94,8 +133,7 @@ private:
 					return 0;
 				AssignChildren(node);
 			}
-			else
-			if (node->is_leaf())
+			else if (node->is_leaf())
 				return 0;
 			node += node->m_children + ((code >> code_length) & 1);
 		}
@@ -151,7 +189,7 @@ private:
 	  }
 	  return 1;
 	}
-	void constr_error()
+	void cnstr_error()
 	{
 		release();
 		throw 1;
@@ -165,20 +203,20 @@ public:
 		: m_root(NULL)
 	{
 		if (!init(num_symbols))
-			constr_error();
+			cnstr_error();
 
 		for (int i = 0; i < num_symbols; ++i)
 		{
 			if (codes[i] != NON_EXISTENT_SYMBOL)
 			{
 				if (symbols[i] < 0 || symbols[i] >= max_symbol)
-					constr_error();
+					cnstr_error();
 				if (!add_symbol(symbols[i], codes[i], code_lengths[i]))
-					constr_error();
+					cnstr_error();
 			}
 		}
 		if (!is_full())
-			constr_error();
+			cnstr_error();
 	}
 	//неявная инициализация дерева, задаются только длины кодов, и их кол-во
 	HuffmanTree(const int* const code_lengths,
@@ -199,44 +237,52 @@ public:
 		}
 
 		if (!init(num_symbols))
-			constr_error();
+			cnstr_error();
 
 		// Build tree.
 		if (num_symbols == 1)
 		{
 			const int max_symbol = code_lengths_size;
 			if (root_symbol < 0 || root_symbol >= max_symbol)
-				constr_error();
+				cnstr_error();
 			if (!add_symbol(root_symbol, 0, 0))
-				constr_error();
+				cnstr_error();
 		}
 		else
 		{
 			int* const codes = new(std::nothrow) int[code_lengths_size];
 			if (codes == NULL)
-				constr_error();
+				cnstr_error();
 
 			if (!code_length_to_codes(code_lengths, code_lengths_size, codes))
-				constr_error();
+				cnstr_error();
 
 			for (symbol = 0; symbol < code_lengths_size; ++symbol)
 			{
 				if (code_lengths[symbol] > 0)
 					if (!add_symbol(symbol, codes[symbol], code_lengths[symbol]))
-						constr_error();
+						cnstr_error();
 			}
 			delete[] codes;
 		}
 		if (!is_full())
-			constr_error();
+			cnstr_error();
 	}
 	virtual ~HuffmanTree()
 	{
 		release();
 	}
-	bool is_full()
+	bool is_full() const
 	{
 		return m_max_nodes == m_num_nodes;
+	}
+	const HuffmanTreeNode & get_root() const
+	{
+		return *m_root;
+	}
+	iterator root() const
+	{
+		return iterator(*this);
 	}
 };
 

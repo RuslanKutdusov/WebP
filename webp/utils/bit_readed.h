@@ -19,17 +19,6 @@ private:
 	{
 		return *this;
 	}
-public:
-	BitReader()
-		: m_data(NULL), m_bits_readed(0), m_length(0), m_eos(true), m_error(0)
-	{
-
-	}
-	BitReader(const uint8_t * const data, size_t length)
-		: m_data(data), m_bits_readed(0), m_length(length), m_eos(false), m_error(false)
-	{
-
-	}
 	uint32_t ReadBit() const
 	{
 		if (m_eos)
@@ -45,6 +34,17 @@ public:
 		if (byte_index == m_length && m_bits_readed == 8)
 			m_eos = true;
 		return (uint32_t)byte & 1;
+	}
+public:
+	BitReader()
+		: m_data(NULL), m_bits_readed(0), m_length(0), m_eos(true), m_error(0)
+	{
+
+	}
+	BitReader(const uint8_t * const data, size_t length)
+		: m_data(data), m_bits_readed(0), m_length(length), m_eos(false), m_error(false)
+	{
+
 	}
 	uint32_t ReadBits(uint32_t n_bits) const
 	{
