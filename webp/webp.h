@@ -93,7 +93,7 @@ private:
 			memcpy(m_vp8_data, iterable_pointer, m_vp8_data_length);
 			if (m_file_format == FILE_FORMAT_LOSSLESS)
 			{
-				vp8::VP8_LOSSLESS_DECODER decoder(m_vp8_data, m_vp8_data_length);
+				vp8l::VP8_LOSSLESS_DECODER decoder(m_vp8_data, m_vp8_data_length);
 			}
 		}
 		catch(exception::InvalidWebPFileFormat & e)

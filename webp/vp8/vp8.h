@@ -4,37 +4,43 @@
 #include "../exception/exception.h"
 #include "../utils/bit_readed.h"
 #include "../huffman/huffman.h"
+#include "color_cache.h"
+#include "huffman.h"
 
 namespace webp
 {
-namespace vp8
+namespace vp8l
 {
 
-#define MAX_COLOR_CACHE_BITS 11
-
-/*	meta huffman code состоит из пяти кодов Хаффмана
-*	-первый для зеленого + длин чего там + цветового кэша, алфавит для этого кода состоит из 256 символово для зеленого, 24 для длин и еще несколько,
-*		в зависимости от размера цветового кэша
-*	-второй для красного, алфавит из 256 символов
-*	-третий для синего, алфавит из 256 символов
-*	-четвертый для альфы, алфавит из 256 символов
-*	-пятый для distance prefix, алфавит из 40 символов
-*/
-#define HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE 5
-static const uint32_t AlphabetSize[HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE] = { 256 + 24, 256, 256, 256, 40 };
-enum MetaHuffmanCode
+struct point
 {
-	GREEN       = 0,
-	RED         = 1,
-	BLUE        = 2,
-	ALPHA       = 3,
-	DIST_PREFIX = 4
+	uint8_t x;
+	uint8_t y;
+	point(){}
+	point(uint8_t x, uint8_t y)
+		: x(x), y(y)
+	{
+
+	}
 };
 
-static const int kCodeLengthCodes = 19;
-static const int kCodeLengthCodeOrder[kCodeLengthCodes] = {
-  17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
-};
+static const uint32_t BORDER_DISTANCE_CODE = 120;
+static const point dist_codes_diff[BORDER_DISTANCE_CODE] = {
+		point(0, 1), point(1, 0),  point(1, 1),  point(-1, 1), point(0, 2),  point(2, 0),  point(1, 2),  point(-1, 2),
+		point(2, 1),  point(-2, 1), point(2, 2),  point(-2, 2), point(0, 3),  point(3, 0),  point(1, 3),  point(-1, 3),
+		point(3, 1),  point(-3, 1), point(2, 3),  point(-2, 3), point(3, 2),  point(-3, 2), point(0, 4),  point(4, 0),
+		point(1, 4),  point(-1, 4), point(4, 1),  point(-4, 1), point(3, 3),  point(-3, 3), point(2, 4),  point(-2, 4),
+		point(4, 2),  point(-4, 2), point(0, 5),  point(3, 4),  point(-3, 4), point(4, 3),  point(-4, 3), point(5, 0),
+		point(1, 5),  point(-1, 5), point(5, 1),  point(-5, 1), point(2, 5),  point(-2, 5), point(5, 2),  point(-5, 2),
+		point(4, 4),  point(-4, 4), point(3, 5),  point(-3, 5), point(5, 3),  point(-5, 3), point(0, 6),  point(6, 0),
+		point(1, 6),  point(-1, 6), point(6, 1),  point(-6, 1), point(2, 6),  point(-2, 6), point(6, 2),  point(-6, 2),
+		point(4, 5),  point(-4, 5), point(5, 4),  point(-5, 4), point(3, 6),  point(-3, 6), point(6, 3),  point(-6, 3),
+		point(0, 7),  point(7, 0),  point(1, 7),  point(-1, 7), point(5, 5),  point(-5, 5), point(7, 1),  point(-7, 1),
+		point(4, 6),  point(-4, 6), point(6, 4),  point(-6, 4), point(2, 7),  point(-2, 7), point(7, 2),  point(-7, 2),
+		point(3, 7),  point(-3, 7), point(7, 3),  point(-7, 3), point(5, 6),  point(-5, 6), point(6, 5),  point(-6, 5),
+		point(8, 0),  point(4, 7),  point(-4, 7), point(7, 4),  point(-7, 4), point(8, 1),  point(8, 2),  point(6, 6),
+		point(-6, 6), point(8, 3),  point(5, 7),  point(-5, 7), point(7, 5),  point(-7, 5), point(8, 4),  point(6, 7),
+		point(-6, 7), point(7, 6),  point(-7, 6), point(8, 5),  point(7, 7),  point(-7, 7), point(8, 6),  point(8, 7)};
 
 class VP8_LOSSLESS_TRANSFORM
 {
@@ -47,14 +53,15 @@ public:
 		  TRANSFORM_NUMBER				= 4
 	};
 private:
-	Type			type;
+	Type			m_type;
 	//int				bits;
-	//int				xsize;
-	//int				ysize;
-	uint32_t*		data;
+	int32_t				m_xsize;
+	int32_t				m_ysize;
+	uint32_t		m_data_length;
+	uint32_t*		m_data;
 public:
 	VP8_LOSSLESS_TRANSFORM()
-		: type(TRANSFORM_NUMBER), data(NULL)
+		: m_type(TRANSFORM_NUMBER), m_data(NULL)
 	{
 
 	}
@@ -62,161 +69,28 @@ public:
 	{
 
 	}
-	friend class VP8_LOSSLESS_DECODER;
-};
-
-/*
- * пусть при чтении данных мы знаем, что дальше идут коды Хаффмана, этот класс принимает ссылку на BitReader и размер
- * цветового кэша, считывает коды Хаффмана и строит деревья, их 5 штук
- */
-class VP8_LOSSLESS_HUFFMAN
-{
-private:
-	utils::BitReader		m_unused;
-	utils::BitReader&		m_bit_reader;
-	huffman::HuffmanTree*	m_huffman_trees[HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE];
-	VP8_LOSSLESS_HUFFMAN()
-		: m_bit_reader(m_unused)
+	void init_data(int32_t xsize, int32_t ysize)
 	{
-
+		m_xsize = xsize;
+		m_ysize = ysize;
+		m_data_length = xsize * ysize;
+		m_data = new uint32_t[m_data_length];
 	}
-	VP8_LOSSLESS_HUFFMAN & operator=(const VP8_LOSSLESS_HUFFMAN&)
+	const Type & type() const
 	{
-		return *this;
+		return m_type;
 	}
-	int read_symbol(const huffman::HuffmanTree& tree)
+	uint32_t * data()
 	{
-		huffman::HuffmanTree::iterator iter = tree.root();
-		while(!(*iter).is_leaf())
-			iter.next(m_bit_reader.ReadBits(1));
-		return (*iter).symbol();
+		return m_data;
 	}
-	void read_code_length(const int* const code_length_code_lengths, int num_symbols, int* const code_lengths)
+	uint32_t data_length()
 	{
-		int symbol;
-		int max_symbol;
-		huffman::HuffmanTree tree(code_length_code_lengths,  kCodeLengthCodes);
-
-		////////////////////////////////////////////////////
-		//Незадокументированный кусок кода, копипаст из libwebp
-		////////////////////////////////////////////////////
-		if (m_bit_reader.ReadBits(1))// use length
-		{
-			const int length_nbits = 2 + 2 * m_bit_reader.ReadBits(3);
-			max_symbol = 2 + m_bit_reader.ReadBits(length_nbits);
-			if (max_symbol > num_symbols)
-				throw 1;
-		}
-		else
-			max_symbol = num_symbols;
-		////////////////////////////////////////////////////
-		///////////////////////////////////////////////////
-
-
-		symbol = 0;
-		int prev_code_len = 8;
-		while (symbol < num_symbols)
-		{
-			int code_len;
-			if (max_symbol-- == 0)
-				break;
-			code_len = read_symbol(tree);
-			if (code_len < 16)
-			{
-				code_lengths[symbol++] = code_len;
-				if (code_len != 0)
-					prev_code_len = code_len;
-			}
-			else
-			{
-				int repeat_count = 0;
-				bool repeat_last_code_len = false;
-				if (code_len == 16)
-				{
-					repeat_count = m_bit_reader.ReadBits(2) + 3;
-					repeat_last_code_len = true;
-				}
-				if (code_len == 17)
-					repeat_count = m_bit_reader.ReadBits(3) + 3;
-				if (code_len == 18)
-					repeat_count = m_bit_reader.ReadBits(7) + 11;
-				if (symbol + repeat_count > num_symbols)
-					throw 1;
-				for(int i = 0; i < repeat_count; i++)
-					code_lengths[symbol++] = repeat_last_code_len ? prev_code_len : 0;
-			}
-		}
-	}
-	int read_code(const uint32_t & alphabet_size, const uint32_t & huffman_tree_index)
-	{
-		//Simple code length или Normal code length
-		uint32_t is_simple_code = m_bit_reader.ReadBits(1);
-
-		if (is_simple_code == 1)
-		{
-			//в случае простой длины кода, символов может 1 или 2
-			uint32_t num_symbols = m_bit_reader.ReadBits(1) + 1;
-			//длины первого кода может быть 1 и 8 бит,
-			//если first_symbol_len_code == 1, тогда длина первого кода 8 бит, иначе 1
-			uint32_t first_symbol_len_code = m_bit_reader.ReadBits(1);
-			//массив под символы
-			int32_t symbols[2];
-			//массив под коды символов
-			int32_t codes[2];
-			//длины кодов символов
-			int32_t code_lengths[2];
-			//читаем первый символ
-			symbols[0] = m_bit_reader.ReadBits(1 + 7 * first_symbol_len_code);
-			codes[0] = 0;
-			code_lengths[0] = num_symbols - 1;
-			//и если есть, читаем второй символ
-			if (num_symbols == 2)
-			{
-				symbols[1] = m_bit_reader.ReadBits(8);
-				codes[1] = 1;
-				code_lengths[1] = num_symbols - 1;
-			}
-			//строим дерево Хаффмана
-			m_huffman_trees[huffman_tree_index] = new huffman::HuffmanTree(code_lengths, codes, symbols, alphabet_size, num_symbols);
-		}
-		else
-		{
-			int* code_lengths = NULL;
-			int i;
-
-			int code_length_code_lengths[kCodeLengthCodes] = { 0 };
-			const int num_codes = m_bit_reader.ReadBits(4) + 4;
-			if (num_codes > kCodeLengthCodes)
-				throw 1;
-
-			code_lengths = new(std::nothrow) int[alphabet_size];
-			if (code_lengths == NULL)
-				throw 1;
-
-			for (i = 0; i < num_codes; ++i)
-			  code_length_code_lengths[kCodeLengthCodeOrder[i]] = m_bit_reader.ReadBits(3);
-
-			read_code_length(code_length_code_lengths, alphabet_size,
-										code_lengths);
-			m_huffman_trees[huffman_tree_index] = new huffman::HuffmanTree(code_lengths, alphabet_size);
-			delete[] code_lengths;
-		}
-		return 1;
-	}
-public:
-	VP8_LOSSLESS_HUFFMAN(utils::BitReader & bit_reader, const uint32_t & color_cache_size)
-		: m_bit_reader(bit_reader)
-	{
-		for(uint32_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++)
-		{
-			uint32_t alphabet_size = AlphabetSize[i];
-			if (i == 0)
-				alphabet_size += color_cache_size;
-			if (!read_code(alphabet_size, i))
-				throw 1;
-		}
+		return m_data_length;
 	}
 };
+
+
 
 class VP8_LOSSLESS_DECODER
 {
@@ -300,41 +174,88 @@ private:
 					#define DIV_ROUND_UP(num, den) ((num) + (den) - 1) / (den)
 					int32_t block_xsize = DIV_ROUND_UP(m_image_width, 1 << size_bits);
 					int32_t block_ysize = DIV_ROUND_UP(m_image_height, 1 << size_bits);
-					ReadEntropyCodedImage(block_xsize, block_ysize, transform.data);
+					transform.init_data(block_xsize, block_ysize);
+					ReadEntropyCodedImage(block_xsize, block_ysize, transform.data(), transform.data_length());
 				}
 				break;
 			default:
 				throw exception::InvalidVP8();
 		}
 	}
-	void ReadEntropyCodedImage(int32_t xsize, int32_t ysize, uint32_t * data)
+	void ReadEntropyCodedImage(const int32_t & xsize, const int32_t & ysize, uint32_t * data, const uint32_t & data_len)
 	{
-		uint32_t color_cache_size = ReadColorCacheSize();
+		uint32_t color_cache_bits = ReadColorCacheBits();
+		VP8_LOSSLESS_COLOR_CACHE * color_cache = color_cache_bits == 0 ? NULL : new VP8_LOSSLESS_COLOR_CACHE(color_cache_bits);
+		uint32_t color_cache_size = 1 << color_cache_bits;
+
 		VP8_LOSSLESS_HUFFMAN huffman(m_bit_reader, color_cache_size);
-		ReadLZ77CodedImage();
+		ReadLZ77CodedImage(huffman, xsize, ysize, data, data_len, color_cache);
 	}
-	int32_t ReadColorCacheSize()
+	int32_t ReadColorCacheBits()
 	{
 		if (m_bit_reader.ReadBits(1) != 0)
 		{
 			int32_t color_cache_code_bits = m_bit_reader.ReadBits(4);
 			if (color_cache_code_bits > MAX_COLOR_CACHE_BITS)
 				throw exception::InvalidVP8();
-			return 1 << color_cache_code_bits;
+			//return 1 << color_cache_code_bits;
+			return color_cache_code_bits;
 		}
 		return 0;
 	}
-	void ReadHuffmanCodes()
+	uint32_t LZ77_prefix_coding_encode(const uint32_t & prefix_code)
 	{
-
+		if (prefix_code < 4)
+			return prefix_code + 1;
+		uint32_t extra_bits = (prefix_code - 2) >> 1;
+		uint32_t offset = (2 + (prefix_code & 1)) << extra_bits;
+		return offset + m_bit_reader.ReadBits(extra_bits) + 1;
 	}
-	void ReadHuffmanCode()
+	uint32_t LZ77_distance_code2distance(const uint32_t & xsize, const uint32_t & lz77_distance_code)
 	{
-
+		if (lz77_distance_code <= BORDER_DISTANCE_CODE)
+		{
+			const point & diff = dist_codes_diff[lz77_distance_code - 1];
+			uint32_t lz77_distance = diff.x + diff.y * xsize;
+			lz77_distance = lz77_distance >= 1 ? lz77_distance : 1;
+			return lz77_distance;
+		}
+		else
+			return lz77_distance_code;
 	}
-	void ReadLZ77CodedImage()
+	void ReadLZ77CodedImage(VP8_LOSSLESS_HUFFMAN & huffman, const int32_t & xsize, const int32_t & ysize, uint32_t * data,
+								const uint32_t & data_len, const VP8_LOSSLESS_COLOR_CACHE * color_cache)
 	{
+		uint32_t data_fills = 0;
+		uint32_t x = 0, y = 0;
 
+		while(data_fills != data_len)
+		{
+			uint32_t S = huffman.read_symbol(GREEN);
+			if (S < 256)
+			{
+				uint32_t red   = huffman.read_symbol(RED);
+				uint32_t blue  = huffman.read_symbol(BLUE);
+				uint32_t alpha = huffman.read_symbol(ALPHA);
+				data[data_fills++] = (alpha << 24) + (red << 16) + (S << 8) + blue;
+				x++;
+			}
+			else if (S < 256 + 24)
+			{
+				uint32_t prefix_code = S - 256 - 24;
+				uint32_t lz77_length = LZ77_prefix_coding_encode(prefix_code);
+				prefix_code = huffman.read_symbol(DIST_PREFIX);
+				uint32_t lz77_distance_code = LZ77_prefix_coding_encode(prefix_code);
+				uint32_t lz77_distance = LZ77_distance_code2distance(xsize, lz77_distance_code);
+				for(uint32_t i = 0; i < lz77_length; i++, data_fills++)
+					data[data_fills] = data[data_fills - lz77_distance];
+				x += lz77_length;
+			}
+			else
+			{
+
+			}
+		}
 	}
 public:
 	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length)
@@ -346,14 +267,6 @@ public:
 		while(m_bit_reader.ReadBits(1))
 		{
 			ReadTransform();
-			/*TransformType transform_type = (TransformType)m_bit_reader.ReadBits(2);
-			int size_bits = m_bit_reader.ReadBits(3) + 2;
-			int block_width = (1 << size_bits);
-			int block_height = (1 << size_bits);
-			#define DIV_ROUND_UP(num, den) ((num) + (den) - 1) / (den)
-			int block_xsize = DIV_ROUND_UP(m_image_width, 1 << size_bits);
-			int block_xsize2= (m_image_width + (1 << size_bits) - 1) >> size_bits;
-			printf("3\n");*/
 		}
 	}
 	virtual ~VP8_LOSSLESS_DECODER()
