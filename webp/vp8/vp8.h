@@ -186,10 +186,13 @@ private:
 	{
 		uint32_t color_cache_bits = ReadColorCacheBits();
 		VP8_LOSSLESS_COLOR_CACHE * color_cache = color_cache_bits == 0 ? NULL : new VP8_LOSSLESS_COLOR_CACHE(color_cache_bits);
-		uint32_t color_cache_size = 1 << color_cache_bits;
+		uint32_t color_cache_size = color_cache_bits == 0 ? 0 : 1 << color_cache_bits;
 
 		VP8_LOSSLESS_HUFFMAN huffman(m_bit_reader, color_cache_size);
 		ReadLZ77CodedImage(huffman, xsize, ysize, data, data_len, color_cache);
+
+		if (color_cache != NULL)
+			delete color_cache;
 	}
 	int32_t ReadColorCacheBits()
 	{
@@ -223,10 +226,11 @@ private:
 		else
 			return lz77_distance_code;
 	}
-	void ReadLZ77CodedImage(VP8_LOSSLESS_HUFFMAN & huffman, const int32_t & xsize, const int32_t & ysize, uint32_t * data,
-								const uint32_t & data_len, const VP8_LOSSLESS_COLOR_CACHE * color_cache)
+	void ReadLZ77CodedImage(VP8_LOSSLESS_HUFFMAN & huffman, const uint32_t & xsize, const uint32_t & ysize, uint32_t * data,
+								const uint32_t & data_len, VP8_LOSSLESS_COLOR_CACHE * color_cache)
 	{
 		uint32_t data_fills = 0;
+		uint32_t last_cached = data_fills;
 		uint32_t x = 0, y = 0;
 
 		while(data_fills != data_len)
@@ -239,21 +243,57 @@ private:
 				uint32_t alpha = huffman.read_symbol(ALPHA);
 				data[data_fills++] = (alpha << 24) + (red << 16) + (S << 8) + blue;
 				x++;
+				if (x >= xsize)
+				{
+					x = 0;
+					y++;
+					if (color_cache != NULL)
+						while(last_cached < data_fills)
+							color_cache->insert(data[last_cached++]);
+				}
 			}
 			else if (S < 256 + 24)
 			{
-				uint32_t prefix_code = S - 256 - 24;
+				uint32_t prefix_code = S - 256;
 				uint32_t lz77_length = LZ77_prefix_coding_encode(prefix_code);
 				prefix_code = huffman.read_symbol(DIST_PREFIX);
 				uint32_t lz77_distance_code = LZ77_prefix_coding_encode(prefix_code);
 				uint32_t lz77_distance = LZ77_distance_code2distance(xsize, lz77_distance_code);
 				for(uint32_t i = 0; i < lz77_length; i++, data_fills++)
+				{
 					data[data_fills] = data[data_fills - lz77_distance];
-				x += lz77_length;
+					x++;
+					if (x >= xsize)
+					{
+						x = 0;
+						y++;
+					}
+				}
+				/*x += lz77_length;
+				while (x >= xsize)
+				{
+					x -= xsize;
+					y++;
+				}*/
+				if (color_cache != NULL)
+					while(last_cached < data_fills)
+						color_cache->insert(data[last_cached++]);
 			}
 			else
 			{
-
+				uint32_t color_cache_key = S - 256 - 24;
+				while(last_cached < data_fills)
+					color_cache->insert(data[last_cached++]);
+				data[data_fills++] = color_cache->get(color_cache_key);
+				x++;
+				if (x >= xsize)
+				{
+					x = 0;
+					y++;
+					if (color_cache != NULL)
+						while(last_cached < data_fills)
+							color_cache->insert(data[last_cached++]);
+				}
 			}
 		}
 	}
