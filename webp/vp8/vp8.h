@@ -14,10 +14,10 @@ namespace vp8l
 
 struct point
 {
-	uint8_t x;
-	uint8_t y;
+	int8_t x;
+	int8_t y;
 	point(){}
-	point(uint8_t x, uint8_t y)
+	point(int8_t x, int8_t y)
 		: x(x), y(y)
 	{
 
@@ -67,7 +67,7 @@ public:
 	}
 	virtual ~VP8_LOSSLESS_TRANSFORM()
 	{
-
+		delete[] m_data;
 	}
 	void init_data(int32_t xsize, int32_t ysize)
 	{
@@ -165,10 +165,10 @@ private:
 
 		VP8_LOSSLESS_TRANSFORM & transform = m_transforms[m_next_transform++];
 
-
 		switch (transform_type)
 		{
 			case(VP8_LOSSLESS_TRANSFORM::PREDICTOR_TRANSFORM):
+			case(VP8_LOSSLESS_TRANSFORM::COLOR_TRANSFORM):
 				{
 					int32_t size_bits = m_bit_reader.ReadBits(3) + 2;
 					#define DIV_ROUND_UP(num, den) ((num) + (den) - 1) / (den)
@@ -178,34 +178,55 @@ private:
 					ReadEntropyCodedImage(block_xsize, block_ysize, transform.data(), transform.data_length());
 				}
 				break;
+			case(VP8_LOSSLESS_TRANSFORM::COLOR_INDEXING_TRANSFORM):
+				{
+					int32_t num_colors = m_bit_reader.ReadBits(8) + 1;
+					transform.init_data(num_colors, 1);
+					ReadEntropyCodedImage(num_colors, 1, transform.data(), transform.data_length());
+				}
+				break;
+			case(VP8_LOSSLESS_TRANSFORM::SUBTRACT_GREEN):
+				break;
 			default:
 				throw exception::InvalidVP8();
 		}
 	}
 	void ReadEntropyCodedImage(const int32_t & xsize, const int32_t & ysize, uint32_t * data, const uint32_t & data_len)
 	{
+		//читаем информацию о color cache
 		uint32_t color_cache_bits = ReadColorCacheBits();
+		//если color cache используется, инициализируем его
 		VP8_LOSSLESS_COLOR_CACHE * color_cache = color_cache_bits == 0 ? NULL : new VP8_LOSSLESS_COLOR_CACHE(color_cache_bits);
+		//вычисляем размер color cache
 		uint32_t color_cache_size = color_cache_bits == 0 ? 0 : 1 << color_cache_bits;
 
+		//восстанавливаем дерево Хаффмана
 		VP8_LOSSLESS_HUFFMAN huffman(m_bit_reader, color_cache_size);
+		//декодируем entropy-coded image
 		ReadLZ77CodedImage(huffman, xsize, ysize, data, data_len, color_cache);
 
+		//если color cache был инициализирован, удаляем его
 		if (color_cache != NULL)
 			delete color_cache;
 	}
-	int32_t ReadColorCacheBits()
+	uint32_t ReadColorCacheBits()
 	{
+		//если бит установлен, то имеется color cache и читаем его размер
 		if (m_bit_reader.ReadBits(1) != 0)
 		{
-			int32_t color_cache_code_bits = m_bit_reader.ReadBits(4);
+			uint32_t color_cache_code_bits = m_bit_reader.ReadBits(4);
 			if (color_cache_code_bits > MAX_COLOR_CACHE_BITS)
 				throw exception::InvalidVP8();
-			//return 1 << color_cache_code_bits;
 			return color_cache_code_bits;
 		}
 		return 0;
 	}
+	/*
+	 * LZ77_prefix_coding_encode
+	 * Бросает исключения: нет
+	 * Назначение:
+	 * длины совпадения и смещения LZ77 закодированы, эта функция декодирует их значения
+	 */
 	uint32_t LZ77_prefix_coding_encode(const uint32_t & prefix_code)
 	{
 		if (prefix_code < 4)
@@ -214,6 +235,12 @@ private:
 		uint32_t offset = (2 + (prefix_code & 1)) << extra_bits;
 		return offset + m_bit_reader.ReadBits(extra_bits) + 1;
 	}
+	/*
+	 * LZ77_distance_code2distance
+	 * Бросает исключения: нет
+	 * Назначение:
+	 * длины совпадения LZ77 меньшие 120 закодированы, эта функция декодирует их значения
+	 */
 	uint32_t LZ77_distance_code2distance(const uint32_t & xsize, const uint32_t & lz77_distance_code)
 	{
 		if (lz77_distance_code <= BORDER_DISTANCE_CODE)
@@ -224,7 +251,7 @@ private:
 			return lz77_distance;
 		}
 		else
-			return lz77_distance_code;
+			return lz77_distance_code - BORDER_DISTANCE_CODE;
 	}
 	void ReadLZ77CodedImage(VP8_LOSSLESS_HUFFMAN & huffman, const uint32_t & xsize, const uint32_t & ysize, uint32_t * data,
 								const uint32_t & data_len, VP8_LOSSLESS_COLOR_CACHE * color_cache)
@@ -232,15 +259,16 @@ private:
 		uint32_t data_fills = 0;
 		uint32_t last_cached = data_fills;
 		uint32_t x = 0, y = 0;
-
 		while(data_fills != data_len)
 		{
-			uint32_t S = huffman.read_symbol(GREEN);
+			int32_t S = huffman.read_symbol(GREEN);
+			//если прочитанное значение меньше 256, значит это значение зеленой компоненты цвета пикселя, а дальше идут красная,
+			//синяя компонента и альфа, все эти значения пакуем в data
 			if (S < 256)
 			{
-				uint32_t red   = huffman.read_symbol(RED);
-				uint32_t blue  = huffman.read_symbol(BLUE);
-				uint32_t alpha = huffman.read_symbol(ALPHA);
+				int32_t red   = huffman.read_symbol(RED);
+				int32_t blue  = huffman.read_symbol(BLUE);
+				int32_t alpha = huffman.read_symbol(ALPHA);
 				data[data_fills++] = (alpha << 24) + (red << 16) + (S << 8) + blue;
 				x++;
 				if (x >= xsize)

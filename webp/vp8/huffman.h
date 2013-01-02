@@ -9,17 +9,17 @@ namespace webp
 namespace vp8l
 {
 
-/*	meta huffman code состоит из пяти кодов Хаффмана
-*	-первый для зеленого + длин чего там + цветового кэша, алфавит для этого кода состоит из 256 символово для зеленого, 24 для длин и еще несколько,
+/*	Пяти типов кодов Хаффмана
+*	-первый для зеленого + префикс длины совпадения LZ77 + цветового кэша, алфавит для этого кода состоит из 256 символово для зеленого, 24 для префикса и еще несколько,
 *		в зависимости от размера цветового кэша
 *	-второй для красного, алфавит из 256 символов
 *	-третий для синего, алфавит из 256 символов
 *	-четвертый для альфы, алфавит из 256 символов
-*	-пятый для distance prefix, алфавит из 40 символов
+*	-пятый для префикса смещения LZ77, алфавит из 40 символов
 */
 #define HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE 5
 static const uint32_t AlphabetSize[HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE] = { 256 + 24, 256, 256, 256, 40 };
-enum MetaHuffmanCode
+enum HuffmanCodeType
 {
 	GREEN       = 0,
 	RED         = 1,
@@ -46,7 +46,8 @@ private:
 	VP8_LOSSLESS_HUFFMAN()
 		: m_bit_reader(m_unused)
 	{
-
+		for(uint32_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++)
+			m_huffman_trees[i] = NULL;
 	}
 	VP8_LOSSLESS_HUFFMAN & operator=(const VP8_LOSSLESS_HUFFMAN&)
 	{
@@ -177,6 +178,7 @@ public:
 	{
 		for(uint32_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++)
 		{
+			m_huffman_trees[i] = NULL;
 			uint32_t alphabet_size = AlphabetSize[i];
 			if (i == 0)
 				alphabet_size += color_cache_size;
@@ -184,9 +186,14 @@ public:
 				throw 1;
 		}
 	}
-	int32_t read_symbol(const MetaHuffmanCode & mhc)
+	int32_t read_symbol(const HuffmanCodeType & mhc)
 	{
 		return read_symbol(*m_huffman_trees[mhc]);
+	}
+	virtual ~VP8_LOSSLESS_HUFFMAN()
+	{
+		for(uint32_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++)
+			delete m_huffman_trees[i];
 	}
 };
 }

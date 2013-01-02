@@ -127,6 +127,7 @@ public:
 			delete[] buf;
 			throw e;
 		}
+		delete[] buf;
 	}
 	WebP(const uint8_t * const encoded_data, uint32_t encoded_data_length)
 	{
@@ -136,7 +137,7 @@ public:
 	}
 	virtual ~WebP()
 	{
-		delete m_vp8_data;
+		delete[] m_vp8_data;
 	}
 };
 

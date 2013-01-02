@@ -3,6 +3,6 @@
 
 int main(int argc, char * argv[])
 {
-	webp::WebP webp("test");
+	webp::WebP webp("1.webp");
 	return 0;
 }
