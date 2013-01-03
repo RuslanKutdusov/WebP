@@ -9,7 +9,7 @@ namespace webp
 namespace vp8l
 {
 
-/*	Пяти типов кодов Хаффмана
+/*	Мета код Хаффмана состоит из 5 кодов Хаффмана
 *	-первый для зеленого + префикс длины совпадения LZ77 + цветового кэша, алфавит для этого кода состоит из 256 символово для зеленого, 24 для префикса и еще несколько,
 *		в зависимости от размера цветового кэша
 *	-второй для красного, алфавит из 256 символов
@@ -19,7 +19,7 @@ namespace vp8l
 */
 #define HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE 5
 static const uint32_t AlphabetSize[HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE] = { 256 + 24, 256, 256, 256, 40 };
-enum HuffmanCodeType
+enum MetaHuffmanCode
 {
 	GREEN       = 0,
 	RED         = 1,
@@ -111,8 +111,11 @@ private:
 					repeat_count = m_bit_reader.ReadBits(7) + 11;
 				if (symbol + repeat_count > num_symbols)
 					throw 1;
+				//printf("(%d %d %d)", repeat_count, repeat_last_code_len, prev_code_len);
 				for(int i = 0; i < repeat_count; i++)
+				{
 					code_lengths[symbol++] = repeat_last_code_len ? prev_code_len : 0;
+				}
 			}
 		}
 	}
@@ -150,23 +153,22 @@ private:
 		}
 		else
 		{
-			int* code_lengths = NULL;
-			int i;
+			int32_t* code_lengths = NULL;
 
-			int code_length_code_lengths[kCodeLengthCodes] = { 0 };
-			const int num_codes = m_bit_reader.ReadBits(4) + 4;
+			int32_t code_length_code_lengths[kCodeLengthCodes] = { 0 };
+			int32_t num_codes = m_bit_reader.ReadBits(4) + 4;
 			if (num_codes > kCodeLengthCodes)
 				throw 1;
 
-			code_lengths = new(std::nothrow) int[alphabet_size];
+			code_lengths = new(std::nothrow) int32_t[alphabet_size];
+			memset(code_lengths, 0, alphabet_size * sizeof(int32_t));
 			if (code_lengths == NULL)
 				throw 1;
 
-			for (i = 0; i < num_codes; ++i)
-			  code_length_code_lengths[kCodeLengthCodeOrder[i]] = m_bit_reader.ReadBits(3);
+			for (int32_t i = 0; i < num_codes; ++i)
+				code_length_code_lengths[kCodeLengthCodeOrder[i]] = m_bit_reader.ReadBits(3);
 
-			read_code_length(code_length_code_lengths, alphabet_size,
-										code_lengths);
+			read_code_length(code_length_code_lengths, alphabet_size, code_lengths);
 			m_huffman_trees[huffman_tree_index] = new huffman::HuffmanTree(code_lengths, alphabet_size);
 			delete[] code_lengths;
 		}
@@ -186,14 +188,37 @@ public:
 				throw 1;
 		}
 	}
-	int32_t read_symbol(const HuffmanCodeType & mhc)
+	int32_t read_symbol(const MetaHuffmanCode & mhc)
 	{
 		return read_symbol(*m_huffman_trees[mhc]);
 	}
 	virtual ~VP8_LOSSLESS_HUFFMAN()
 	{
 		for(uint32_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++)
-			delete m_huffman_trees[i];
+			if (m_huffman_trees[i] != NULL)
+				delete m_huffman_trees[i];
+	}
+};
+
+class VP8_LOSSLESS_HUFFMAN_META
+{
+private:
+	utils::BitReader		m_unused;
+	utils::BitReader&		m_bit_reader;
+	VP8_LOSSLESS_HUFFMAN_META()
+		: m_bit_reader(m_unused)
+	{
+
+	}
+public:
+	VP8_LOSSLESS_HUFFMAN_META(utils::BitReader & bit_reader, const uint32_t & color_cache_size)
+		: m_bit_reader(bit_reader)
+	{
+		uint32_t use_meta_huffman_codes = bit_reader.ReadBits(1);
+		if (use_meta_huffman_codes)
+		{
+
+		}
 	}
 };
 }

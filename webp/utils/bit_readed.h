@@ -56,6 +56,10 @@ public:
 		}
 		return ret;
 	}
+	virtual ~BitReader()
+	{
+
+	}
 	bool eos()
 	{
 		return m_eos;
