@@ -111,7 +111,7 @@ private:
 			}
 		}
 	}
-	void read_code(const uint32_t & alphabet_size, const uint32_t & huffman_tree_index)
+	void read_code(const uint32_t & alphabet_size)
 	{
 		//Simple code length или Normal code length
 		uint32_t is_simple_code = m_bit_reader->ReadBits(1);
@@ -172,7 +172,7 @@ public:
 			uint32_t alphabet_size = AlphabetSize[i];
 			if (i == 0)
 				alphabet_size += color_cache_size;
-			read_code(alphabet_size, i);
+			read_code(alphabet_size);
 		}
 	}
 	int32_t read_symbol(const MetaHuffmanCode & mhc) const

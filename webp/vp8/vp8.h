@@ -110,9 +110,9 @@ private:
 		}
 	};
 private:
-	const uint8_t* const	m_encoded_data;
+	/*const uint8_t* const	m_encoded_data;
 	//байт в m_data
-	uint32_t				m_encoded_data_length;
+	uint32_t				m_encoded_data_length;*/
 	//прочитано из заголовка vp8l
 	uint32_t				m_lossless_stream_length;
 	int32_t					m_image_width;
@@ -136,7 +136,7 @@ private:
 	utils::array<uint32_t>	m_decoded_data;
 
 	VP8_LOSSLESS_DECODER()
-		: m_encoded_data(NULL), m_encoded_data_length(0)
+		//: m_encoded_data(NULL), m_encoded_data_length(0)
 	{
 
 	}
@@ -416,8 +416,8 @@ private:
 		}
 	}
 public:
-	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length)
-		: m_encoded_data(data), m_encoded_data_length(data_length), m_bit_reader(data, data_length),
+	VP8_LOSSLESS_DECODER(utils::array<uint8_t> & encoded_data)
+		: m_bit_reader(&encoded_data, encoded_data.size()),
 		  m_applied_transforms(0), m_next_transform(0)
 	{
 		ReadInfo();

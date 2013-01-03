@@ -17,16 +17,15 @@ uint32_t get_file_size(FILE * file)
 	return len_long_int;
 }
 
-uint8_t *read_file(const std::string & file_name, uint32_t & file_length_out)
+void read_file(const std::string & file_name, uint32_t & file_length_out, array<uint8_t> & buf)
 {
-	uint8_t *ret = NULL;
 	FILE *fp = NULL;
 
 #ifdef LINUX
-	fp = fopen(file_name.c_str(), "r");
+	fp = fopen(file_name.c_str(), "rb");
 #endif
 #ifdef WINDOWS
-	fopen_s(&fp, file_name.c_str(), "r");
+	fopen_s(&fp, file_name.c_str(), "rb");
 #endif
 	if (fp == NULL)
 		throw exception::FileOperationException();
@@ -41,24 +40,16 @@ uint8_t *read_file(const std::string & file_name, uint32_t & file_length_out)
 		throw file_operation_exception;
 	}
 
-	ret = new(std::nothrow) uint8_t[file_length_out];
-	if (!ret)
-	{
-		fclose(fp);
-		throw exception::MemoryAllocationException();
-	}
+	buf.realloc(file_length_out);
 
-	size_t readed = fread(ret, 1, file_length_out, fp);
+	size_t readed = fread(&buf, 1, file_length_out, fp);
 	if (readed != file_length_out)
 	{
-		delete[] ret;
 		fclose(fp);
 		throw exception::FileOperationException();
 	}
 
 	fclose(fp);
-
-	return ret;
 }
 
 }

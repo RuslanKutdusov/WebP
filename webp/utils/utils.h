@@ -9,8 +9,6 @@ namespace webp
 namespace utils
 {
 
-uint8_t *read_file(const std::string & file_name, uint32_t & file_length_out);
-
 template <class T>
 class array
 {
@@ -99,6 +97,8 @@ public:
 		memset(m_array, c, m_size * sizeof(T));
 	}
 };
+
+void read_file(const std::string & file_name, uint32_t & file_length_out, array<uint8_t> & buf);
 
 }
 }
