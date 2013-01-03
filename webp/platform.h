@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <string>
 #include <string.h>
+#include <vector>
 
 #ifdef LINUX
 #include <sys/types.h>

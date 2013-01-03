@@ -19,6 +19,11 @@ private:
 	{
 		return *this;
 	}
+	BitReader(const BitReader&)
+		: m_data(NULL)
+	{
+
+	}
 	uint32_t ReadBit() const
 	{
 		if (m_eos)

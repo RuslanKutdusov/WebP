@@ -64,10 +64,19 @@ public:
 	}
 };
 
-class InvalidVP8 : public Exception
+class InvalidVP8L : public Exception
 {
 public:
-	virtual ~InvalidVP8()
+	virtual ~InvalidVP8L()
+	{
+
+	}
+};
+
+class InvalidHuffman : public Exception
+{
+public:
+	virtual ~InvalidHuffman()
 	{
 
 	}

@@ -70,7 +70,7 @@ public:
 			: m_node(NULL){}
 	public:
 		iterator(const HuffmanTree & tree)
-			: m_node(tree.m_root)
+			: m_node(&tree.m_root)
 		{
 
 		}
@@ -86,11 +86,11 @@ public:
 	};
 	friend class iterator;
 private:
-	HuffmanTreeNode*			m_root;   // all the nodes, starting at root.
+	utils::array<HuffmanTreeNode>	m_root;   // all the nodes, starting at root.
 	int32_t						m_max_nodes;           // max number of nodes
 	int32_t						m_num_nodes;           // number of currently occupied nodes
 	HuffmanTree()
-		: m_root(NULL)
+
 	{
 		iterator iter(*this);
 		HuffmanTreeNode node = *iter;
@@ -101,17 +101,17 @@ private:
 			return 0;
 
 		m_max_nodes = 2 * num_leaves - 1;
-		m_root = new(std::nothrow) HuffmanTreeNode[m_max_nodes]();
+		/*m_root = new(std::nothrow) HuffmanTreeNode[m_max_nodes]();
 		if (m_root == NULL)
-			return 0;
+			return 0;*/
+		m_root.realloc(m_max_nodes);
 
 		m_num_nodes = 1;
 		return 1;
 	}
 	void release()
 	{
-		if (m_root != NULL)
-			delete[] m_root;
+
 	}
 	void AssignChildren(HuffmanTreeNode * node)
 	{
@@ -121,7 +121,7 @@ private:
 	}
 	int add_symbol(int32_t symbol, int32_t code, int32_t code_length)
 	{
-		HuffmanTreeNode* node = m_root;
+		HuffmanTreeNode* node = &m_root;
 		const HuffmanTreeNode* const max_node = m_root + m_max_nodes;
 		while (code_length-- > 0)
 		{
@@ -148,7 +148,7 @@ private:
 		return 1;
 	}
 	int code_length_to_codes(const int* const code_lengths,
-	                              int code_lengths_size, int* const huff_codes)
+	                              int code_lengths_size, utils::array<int32_t> & huff_codes)
 	{
 	  int symbol;
 	  int code_len;
@@ -192,7 +192,7 @@ private:
 	void cnstr_error()
 	{
 		release();
-		throw 1;
+		throw exception::InvalidHuffman();
 	}
 public:
 	//явная инициализация дерева, задаются длины кодов, сами коды хаффмана, символы и кол-во символов
@@ -200,7 +200,6 @@ public:
 				 const int* const codes,
 				 const int* const symbols, int max_symbol,
 				 int num_symbols)
-		: m_root(NULL)
 	{
 		if (!init(num_symbols))
 			cnstr_error();
@@ -219,9 +218,7 @@ public:
 			cnstr_error();
 	}
 	//неявная инициализация дерева, задаются только длины кодов, и их кол-во
-	HuffmanTree(const int* const code_lengths,
-				 int code_lengths_size)
-		: m_root(NULL)
+	HuffmanTree(const int* const code_lengths, int code_lengths_size)
 	{
 		int symbol;
 		int num_symbols = 0;//кол-во символов
@@ -250,9 +247,11 @@ public:
 		}
 		else
 		{
-			int* const codes = new(std::nothrow) int[code_lengths_size];
+			/*int32_t * codes = new(std::nothrow) int[code_lengths_size];
 			if (codes == NULL)
-				cnstr_error();
+				cnstr_error();*/
+			utils::array<int32_t> codes(code_lengths_size);
+
 
 			if (!code_length_to_codes(code_lengths, code_lengths_size, codes))
 				cnstr_error();
@@ -263,10 +262,14 @@ public:
 					if (!add_symbol(symbol, codes[symbol], code_lengths[symbol]))
 						cnstr_error();
 			}
-			delete[] codes;
 		}
 		if (!is_full())
 			cnstr_error();
+	}
+	HuffmanTree(const HuffmanTree & tree)
+		: m_max_nodes(tree.m_max_nodes), m_num_nodes(tree.m_num_nodes)
+	{
+		m_root = tree.m_root;
 	}
 	virtual ~HuffmanTree()
 	{

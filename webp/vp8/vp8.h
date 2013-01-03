@@ -56,40 +56,37 @@ public:
 		  TRANSFORM_NUMBER				= 4
 	};
 private:
-	Type			m_type;
-	//int				bits;
-	int32_t				m_xsize;
-	int32_t				m_ysize;
-	uint32_t		m_data_length;
-	uint32_t*		m_data;
+	Type					m_type;
+	int32_t					m_xsize;
+	int32_t					m_ysize;
+	utils::array<uint32_t>	m_data;
 public:
 	VP8_LOSSLESS_TRANSFORM()
-		: m_type(TRANSFORM_NUMBER), m_data(NULL)
+		: m_type(TRANSFORM_NUMBER), m_data()
 	{
 
 	}
 	virtual ~VP8_LOSSLESS_TRANSFORM()
 	{
-		delete[] m_data;
+
 	}
 	void init_data(int32_t xsize, int32_t ysize)
 	{
 		m_xsize = xsize;
 		m_ysize = ysize;
-		m_data_length = xsize * ysize;
-		m_data = new uint32_t[m_data_length];
+		m_data.realloc(xsize * ysize);
 	}
 	const Type & type() const
 	{
 		return m_type;
 	}
-	uint32_t * data()
+	utils::array<uint32_t>& data()
 	{
 		return m_data;
 	}
 	uint32_t data_length()
 	{
-		return m_data_length;
+		return m_data.size();
 	}
 };
 
@@ -100,11 +97,12 @@ class VP8_LOSSLESS_DECODER
 private:
 	struct MetaHuffmanInfo
 	{
-		VP8_LOSSLESS_HUFFMAN ** meta_huffmans;
+		//VP8_LOSSLESS_HUFFMAN ** meta_huffmans;
+		std::vector<VP8_LOSSLESS_HUFFMAN> meta_huffmans;
 		uint32_t huffman_bits;
 		uint32_t huffman_xsize;
 		uint32_t meta_huffman_codes_num;
-		uint32_t * entropy_image;
+		utils::array<uint32_t> entropy_image;
 		MetaHuffmanInfo()
 			: huffman_bits(0), huffman_xsize(0), meta_huffman_codes_num(1)
 		{
@@ -135,8 +133,7 @@ private:
 	VP8_LOSSLESS_TRANSFORM m_transforms[VP8_LOSSLESS_TRANSFORM::TRANSFORM_NUMBER];
 	int32_t					m_next_transform;
 
-	uint32_t*				m_decoded_data;
-	uint32_t				m_decoded_data_length;
+	utils::array<uint32_t>	m_decoded_data;
 
 	VP8_LOSSLESS_DECODER()
 		: m_encoded_data(NULL), m_encoded_data_length(0)
@@ -178,10 +175,10 @@ private:
 
 		//проверяем, что мы не применяли эту трансформацию
 		if (m_applied_transforms & (1U << transform_type))
-			throw exception::InvalidVP8();
+			throw exception::InvalidVP8L();
 		m_applied_transforms |= (1U << transform_type);
 		if (m_next_transform == VP8_LOSSLESS_TRANSFORM::TRANSFORM_NUMBER)
-			throw exception::InvalidVP8();
+			throw exception::InvalidVP8L();
 
 		VP8_LOSSLESS_TRANSFORM & transform = m_transforms[m_next_transform++];
 
@@ -194,52 +191,57 @@ private:
 					int32_t block_xsize = DIV_ROUND_UP(m_image_width, 1 << size_bits);
 					int32_t block_ysize = DIV_ROUND_UP(m_image_height, 1 << size_bits);
 					transform.init_data(block_xsize, block_ysize);
-					ReadEntropyCodedImage(block_xsize, block_ysize, transform.data(), transform.data_length());
+					ReadEntropyCodedImage(block_xsize, block_ysize, transform.data());
 				}
 				break;
 			case(VP8_LOSSLESS_TRANSFORM::COLOR_INDEXING_TRANSFORM):
 				{
 					int32_t num_colors = m_bit_reader.ReadBits(8) + 1;
 					transform.init_data(num_colors, 1);
-					ReadEntropyCodedImage(num_colors, 1, transform.data(), transform.data_length());
+					ReadEntropyCodedImage(num_colors, 1, transform.data());
 				}
 				break;
 			case(VP8_LOSSLESS_TRANSFORM::SUBTRACT_GREEN):
 				break;
 			default:
-				throw exception::InvalidVP8();
+				throw exception::InvalidVP8L();
 		}
 	}
-	void ReadEntropyCodedImage(const int32_t & xsize, const int32_t & ysize, uint32_t * data, const uint32_t & data_len)
+	/*
+	 * ReadEntropyCodedImage()
+	 * Бросает исключения: InvalidVP8, InvalidHuffman
+	 * Назначение:
+	 * Читает и декодирует entropy-coded image
+	 */
+	void ReadEntropyCodedImage(const int32_t & xsize, const int32_t & ysize, utils::array<uint32_t> & data)
 	{
-		VP8_LOSSLESS_COLOR_CACHE * color_cache;
-		uint32_t color_cache_size;
-		ReadColorCacheInfo(color_cache_size, &color_cache);
+		uint32_t color_cache_bits =	ReadColorCacheBits();
+		VP8_LOSSLESS_COLOR_CACHE color_cache(color_cache_bits);
+		uint32_t color_cache_size = color_cache_bits == 0 ? 0 :1 << color_cache_bits;
+
+		MetaHuffmanInfo meta_huffman_info;
 
 		//восстанавливаем дерево Хаффмана
-		//VP8_LOSSLESS_HUFFMAN huffman(m_bit_reader, color_cache_size);
+		meta_huffman_info.meta_huffmans.push_back(VP8_LOSSLESS_HUFFMAN(&m_bit_reader, color_cache_size));
 		//декодируем entropy-coded image
-		MetaHuffmanInfo meta_huffman_info;
-		meta_huffman_info.meta_huffmans = new VP8_LOSSLESS_HUFFMAN*[1];
-		meta_huffman_info.meta_huffmans[0] = new VP8_LOSSLESS_HUFFMAN(m_bit_reader, color_cache_size);
-		ReadLZ77CodedImage(meta_huffman_info, xsize, ysize, data, data_len, color_cache);
-
-		//если color cache был инициализирован, удаляем его
-		if (color_cache != NULL)
-			delete color_cache;
+		ReadLZ77CodedImage(meta_huffman_info, xsize, ysize, data, color_cache);
 	}
+	/*
+	 * ReadSpatiallyCodedImage()
+	 * Бросает исключения: InvalidVP8, InvalidHuffman
+	 * Назначение:
+	 * Читает и декодирует spatially coded image
+	 */
 	void ReadSpatiallyCodedImage()
 	{
-		VP8_LOSSLESS_COLOR_CACHE * color_cache;
-		uint32_t color_cache_size;
-		ReadColorCacheInfo(color_cache_size, &color_cache);
+		uint32_t color_cache_bits =	ReadColorCacheBits();
+		VP8_LOSSLESS_COLOR_CACHE color_cache(color_cache_bits);
+		uint32_t color_cache_size = color_cache_bits == 0 ? 0 :1 << color_cache_bits;
 
 		uint32_t use_meta_huffman_codes = m_bit_reader.ReadBits(1);
-		uint32_t * entropy_image = NULL;
 		uint32_t entropy_image_size = 0;
 		//Кол-во мета кодов Хаффмана в наборе,
 		//если имеется meta-huffman, то кол-во мета кодов отлично от 1
-		//uint32_t meta_huffman_codes_num = 1;
 		MetaHuffmanInfo meta_huffman_info;
 		if (use_meta_huffman_codes)
 		{
@@ -248,44 +250,51 @@ private:
 			uint32_t huffman_xsize = DIV_ROUND_UP(m_image_width, 1 << huffman_bits);
 			uint32_t huffman_ysize = DIV_ROUND_UP(m_image_height, 1 << huffman_bits);
 			entropy_image_size  = huffman_xsize * huffman_ysize;
-			entropy_image = new uint32_t[entropy_image_size];
-			ReadEntropyCodedImage(huffman_xsize, huffman_ysize, entropy_image, entropy_image_size);
+			meta_huffman_info.entropy_image.realloc(entropy_image_size);
+			ReadEntropyCodedImage(huffman_xsize, huffman_ysize, meta_huffman_info.entropy_image);
 
 			meta_huffman_info.huffman_xsize = huffman_xsize;
 			meta_huffman_info.huffman_bits = huffman_bits;
 
 			for (uint32_t i = 0; i < entropy_image_size; ++i)
 			{
-			  uint32_t meta_huffman_code_index = (entropy_image[i] >> 8) & 0xffff;
-			  entropy_image[i] = meta_huffman_code_index;
+			  uint32_t meta_huffman_code_index = (meta_huffman_info.entropy_image[i] >> 8) & 0xffff;
+			  meta_huffman_info.entropy_image[i] = meta_huffman_code_index;
 			  if (meta_huffman_code_index >= meta_huffman_info.meta_huffman_codes_num)
 				  meta_huffman_info.meta_huffman_codes_num = meta_huffman_code_index + 1;
 			}
-			meta_huffman_info.entropy_image = entropy_image;
 		}
 
-		meta_huffman_info.meta_huffmans = new VP8_LOSSLESS_HUFFMAN*[meta_huffman_info.meta_huffman_codes_num];
 		for(uint32_t i = 0; i < meta_huffman_info.meta_huffman_codes_num; i++)
-			meta_huffman_info.meta_huffmans[i] = new VP8_LOSSLESS_HUFFMAN(m_bit_reader, color_cache_size);
-		m_decoded_data_length = m_image_width * m_image_height;
-		m_decoded_data = new uint32_t[m_decoded_data_length];
-		ReadLZ77CodedImage(meta_huffman_info, m_image_width, m_image_height, m_decoded_data, m_decoded_data_length, color_cache);
+			meta_huffman_info.meta_huffmans.push_back(VP8_LOSSLESS_HUFFMAN(&m_bit_reader, color_cache_size));
+
+		ReadLZ77CodedImage(meta_huffman_info, m_image_width, m_image_height, m_decoded_data, color_cache);
+		SHA_CTX c;
+		SHA1_Init(&c);
+		SHA1_Update(&c, &m_decoded_data, m_decoded_data.size());
+		unsigned char sha1[20];
+		SHA1_Final(sha1, &c);
+		for(int i = 0; i < 20; i++)
+			printf("%02X", sha1[i]);
+		printf("\n");
 	}
-	void ReadColorCacheInfo(uint32_t & color_cache_size, VP8_LOSSLESS_COLOR_CACHE  ** color_cache)
+	/*
+	 * ReadColorCacheInfo()
+	 * Бросает исключения: InvalidVP8
+	 * Назначение:
+	 * Читает размер color cache и при необходимости инициализирует его
+	 */
+	uint32_t ReadColorCacheBits()
 	{
 		//если бит установлен, то имеется color cache и читаем его размер
 		if (m_bit_reader.ReadBits(1) != 0)
 		{
 			uint32_t color_cache_code_bits = m_bit_reader.ReadBits(4);
 			if (color_cache_code_bits > MAX_COLOR_CACHE_BITS)
-				throw exception::InvalidVP8();
-			//если color cache используется, инициализируем его
-			*color_cache =  new VP8_LOSSLESS_COLOR_CACHE(color_cache_code_bits);
-			//вычисляем размер color cache
-			color_cache_size = 1 << color_cache_code_bits;
+				throw exception::InvalidVP8L();
+			return color_cache_code_bits;
 		}
-		color_cache_size = 0;
-		*color_cache = NULL;
+		return 0;
 	}
 	/*
 	 * LZ77_prefix_coding_encode
@@ -319,6 +328,14 @@ private:
 		else
 			return lz77_distance_code - BORDER_DISTANCE_CODE;
 	}
+	/*
+	 * SelectMetaHuffman
+	 * Бросает исключения: нет
+	 * Назначение:
+	 * если имеется meta huffman, то этот метод для заданного пикселя ARGB изображения определяет каким мета кодом Хаффмана из набора
+	 * он закодирован
+	 * если meta huffaman нет, то все пиксели ARGB изображения закодированы одним мета кодом Хаффмана
+	 */
 	uint32_t SelectMetaHuffman(const MetaHuffmanInfo & meta_huffman_info, uint32_t x, uint32_t y)
 	{
 		if (meta_huffman_info.meta_huffman_codes_num == 1)
@@ -326,15 +343,21 @@ private:
 		uint32_t index = (y >> meta_huffman_info.huffman_bits) * meta_huffman_info.huffman_xsize + (x >> meta_huffman_info.huffman_bits);
 		return meta_huffman_info.entropy_image[index];
 	}
-	void ReadLZ77CodedImage(const MetaHuffmanInfo & meta_huffman_info, const uint32_t & xsize, const uint32_t & ysize, uint32_t * data,
-								const uint32_t & data_len, VP8_LOSSLESS_COLOR_CACHE * color_cache)
+	/*
+	 * ReadLZ77CodedImage
+	 * Бросает исключения: нет
+	 * Назначение:
+	 * читает и декодирует lz77 coded image
+	 */
+	void ReadLZ77CodedImage(const MetaHuffmanInfo & meta_huffman_info, const uint32_t & xsize, const uint32_t & ysize, utils::array<uint32_t> & data,
+								VP8_LOSSLESS_COLOR_CACHE & color_cache)
 	{
 		uint32_t data_fills = 0;
 		uint32_t last_cached = data_fills;
 		uint32_t x = 0, y = 0;
-		while(data_fills != data_len)
+		while(data_fills != data.size())
 		{
-			VP8_LOSSLESS_HUFFMAN & huffman = *meta_huffman_info.meta_huffmans[SelectMetaHuffman(meta_huffman_info, x, y)];
+			const VP8_LOSSLESS_HUFFMAN & huffman = meta_huffman_info.meta_huffmans[SelectMetaHuffman(meta_huffman_info, x, y)];
 			int32_t S = huffman.read_symbol(GREEN);
 			//если прочитанное значение меньше 256, значит это значение зеленой компоненты цвета пикселя, а дальше идут красная,
 			//синяя компонента и альфа, все эти значения пакуем в data
@@ -349,9 +372,9 @@ private:
 				{
 					x = 0;
 					y++;
-					if (color_cache != NULL)
+					if (color_cache.is_presented())
 						while(last_cached < data_fills)
-							color_cache->insert(data[last_cached++]);
+							color_cache.insert(data[last_cached++]);
 				}
 			}
 			else if (S < 256 + 24)
@@ -371,30 +394,23 @@ private:
 						y++;
 					}
 				}
-				/*x += lz77_length;
-				while (x >= xsize)
-				{
-					x -= xsize;
-					y++;
-				}*/
-				if (color_cache != NULL)
+				if (color_cache.is_presented())
 					while(last_cached < data_fills)
-						color_cache->insert(data[last_cached++]);
+						color_cache.insert(data[last_cached++]);
 			}
 			else
 			{
 				uint32_t color_cache_key = S - 256 - 24;
 				while(last_cached < data_fills)
-					color_cache->insert(data[last_cached++]);
-				data[data_fills++] = color_cache->get(color_cache_key);
+					color_cache.insert(data[last_cached++]);
+				data[data_fills++] = color_cache.get(color_cache_key);
 				x++;
 				if (x >= xsize)
 				{
 					x = 0;
 					y++;
-					if (color_cache != NULL)
-						while(last_cached < data_fills)
-							color_cache->insert(data[last_cached++]);
+					while(last_cached < data_fills)
+						color_cache.insert(data[last_cached++]);
 				}
 			}
 		}
@@ -405,6 +421,8 @@ public:
 		  m_applied_transforms(0), m_next_transform(0)
 	{
 		ReadInfo();
+
+		m_decoded_data.realloc(m_image_width * m_image_height);
 
 		while(m_bit_reader.ReadBits(1))
 		{
