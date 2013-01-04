@@ -7,6 +7,7 @@
 #include "color_cache.h"
 #include "huffman.h"
 #include <openssl/sha.h>
+#include <png.h>
 
 #define DIV_ROUND_UP(num, den) ((num) + (den) - 1) / (den)
 
@@ -45,6 +46,12 @@ static const point dist_codes_diff[BORDER_DISTANCE_CODE] = {
 		point(-6, 6), point(8, 3),  point(5, 7),  point(-5, 7), point(7, 5),  point(-7, 5), point(8, 4),  point(6, 7),
 		point(-6, 7), point(7, 6),  point(-7, 6), point(8, 5),  point(7, 7),  point(-7, 7), point(8, 6),  point(8, 7)};
 
+
+static void PNGAPI error_function(png_structp png, png_const_charp dummy) {
+  (void)dummy;  // remove variable-unused warning
+  longjmp(png_jmpbuf(png), 1);
+}
+
 class VP8_LOSSLESS_TRANSFORM
 {
 public:
@@ -57,12 +64,13 @@ public:
 	};
 private:
 	Type					m_type;
-	int32_t					m_xsize;
-	int32_t					m_ysize;
+	uint32_t				m_xsize;
+	uint32_t				m_ysize;
+	uint32_t				m_bits;
 	utils::array<uint32_t>	m_data;
 public:
 	VP8_LOSSLESS_TRANSFORM()
-		: m_type(TRANSFORM_NUMBER), m_data()
+		: m_type(TRANSFORM_NUMBER)
 	{
 
 	}
@@ -70,15 +78,20 @@ public:
 	{
 
 	}
-	void init_data(int32_t xsize, int32_t ysize)
+	void init_data(uint32_t xsize, uint32_t ysize, uint32_t bits)
 	{
 		m_xsize = xsize;
 		m_ysize = ysize;
+		m_bits = bits;
 		m_data.realloc(xsize * ysize);
 	}
 	const Type & type() const
 	{
 		return m_type;
+	}
+	const uint32_t & bits() const
+	{
+		return m_bits;
 	}
 	utils::array<uint32_t>& data()
 	{
@@ -115,8 +128,8 @@ private:
 	uint32_t				m_encoded_data_length;
 	//прочитано из заголовка vp8l
 	uint32_t				m_lossless_stream_length;
-	int32_t					m_image_width;
-	int32_t					m_image_height;
+	uint32_t					m_image_width;
+	uint32_t					m_image_height;
 	int32_t					m_alpha_is_used;
 	int32_t					m_version_number;
 	//часто приходится читать m_data по битам
@@ -129,11 +142,20 @@ private:
 	//след бит в 1 - применен COLOR_TRANSFORM, иначе нет - еще не применялся
 	//след бит в 1 - применен SUBTRACT_GREEN, иначе нет - еще не применялся
 	//след бит в 1 - применен COLOR_INDEXING_TRANSFORM, иначе - еще не применялся
-	int32_t					m_applied_transforms;
-	VP8_LOSSLESS_TRANSFORM m_transforms[VP8_LOSSLESS_TRANSFORM::TRANSFORM_NUMBER];
-	int32_t					m_next_transform;
+	std::map<VP8_LOSSLESS_TRANSFORM::Type, VP8_LOSSLESS_TRANSFORM> m_transforms;
+	//int32_t					m_applied_transforms;
+	//VP8_LOSSLESS_TRANSFORM m_transforms[VP8_LOSSLESS_TRANSFORM::TRANSFORM_NUMBER];
+	//int32_t					m_next_transform;
 
 	utils::array<uint32_t>	m_decoded_data;
+
+	//ширина ARGB-изображения в последнем lz77-coded image, в случае если есть Color indexing trasformation, т.е "палитра",
+	//может отличаться от ширины изображения, которые мы декодируем, если кол-во цветом в палитре <=16.
+	//тогда один байт в строке может содержать индексы для 2,4,8 пикселей.
+	//если m_color_indexing_xsize == 0, тогда "палитры" нет, и ширина ARGB-изображения в последнем lz77-coded image равна
+	//ширине изображения, которые мы декодируем,
+	//иначе m_color_indexing_xsize и есть эта ширина
+	uint32_t					m_color_indexing_xsize;
 
 	VP8_LOSSLESS_DECODER()
 		: m_encoded_data(NULL), m_encoded_data_length(0)
@@ -173,32 +195,44 @@ private:
 		//Читаем тип трансформации, которую надо применить
 		VP8_LOSSLESS_TRANSFORM::Type transform_type = (VP8_LOSSLESS_TRANSFORM::Type)m_bit_reader.ReadBits(2);
 
-		//проверяем, что мы не применяли эту трансформацию
-		if (m_applied_transforms & (1U << transform_type))
-			throw exception::InvalidVP8L();
-		m_applied_transforms |= (1U << transform_type);
-		if (m_next_transform == VP8_LOSSLESS_TRANSFORM::TRANSFORM_NUMBER)
+		std::map<VP8_LOSSLESS_TRANSFORM::Type, VP8_LOSSLESS_TRANSFORM>::iterator iter = m_transforms.find(transform_type);
+		if (iter != m_transforms.end())
 			throw exception::InvalidVP8L();
 
-		VP8_LOSSLESS_TRANSFORM & transform = m_transforms[m_next_transform++];
+
+		VP8_LOSSLESS_TRANSFORM transform;
 
 		switch (transform_type)
 		{
 			case(VP8_LOSSLESS_TRANSFORM::PREDICTOR_TRANSFORM):
 			case(VP8_LOSSLESS_TRANSFORM::COLOR_TRANSFORM):
 				{
-					int32_t size_bits = m_bit_reader.ReadBits(3) + 2;
-					int32_t block_xsize = DIV_ROUND_UP(m_image_width, 1 << size_bits);
-					int32_t block_ysize = DIV_ROUND_UP(m_image_height, 1 << size_bits);
-					transform.init_data(block_xsize, block_ysize);
+					uint32_t size_bits = m_bit_reader.ReadBits(3) + 2;
+					uint32_t block_xsize = DIV_ROUND_UP(m_image_width, 1 << size_bits);
+					uint32_t block_ysize = DIV_ROUND_UP(m_image_height, 1 << size_bits);
+					transform.init_data(block_xsize, block_ysize, size_bits);
 					ReadEntropyCodedImage(block_xsize, block_ysize, transform.data());
 				}
 				break;
 			case(VP8_LOSSLESS_TRANSFORM::COLOR_INDEXING_TRANSFORM):
 				{
-					int32_t num_colors = m_bit_reader.ReadBits(8) + 1;
-					transform.init_data(num_colors, 1);
+					//кол-во цветов в палитре
+					uint32_t num_colors = m_bit_reader.ReadBits(8) + 1;
+					//Показывает, сколько пикселей объединены, см. описание m_color_indexing_xsize
+					uint32_t bits = (num_colors > 16) ? 0 //пиксели не объединены
+								  : (num_colors > 4) ? 1 //2 пикселя объединены, индексы в пределах [0..15]
+								  : (num_colors > 2) ? 2 //4 пикселя объединены, индексы в пределах [0..3]
+								  : 3;//8 пикселей объединены, индексы в пределах [0..1]
+					m_color_indexing_xsize = DIV_ROUND_UP(m_image_width, 1 << bits);
+					//"палитра" - одномерный массив
+					transform.init_data(num_colors, 1, bits);
+					//в transform.data() будет находится "палитра"
 					ReadEntropyCodedImage(num_colors, 1, transform.data());
+					//"палитра" закодирована с помощью subraction-coding для уменьшения энтропии.
+					//чтобы ее восстановить, надо каждый цвет покомпонентно сложить с предыдущим
+					uint8_t * color_map_bytes = (uint8_t*)&transform.data()[0];
+					for(size_t i = 4; i < 4 * num_colors; i++)
+						color_map_bytes[i] = (color_map_bytes[i] + color_map_bytes[i - 4]) & 0xff;
 				}
 				break;
 			case(VP8_LOSSLESS_TRANSFORM::SUBTRACT_GREEN):
@@ -206,6 +240,7 @@ private:
 			default:
 				throw exception::InvalidVP8L();
 		}
+		m_transforms.insert(std::make_pair(transform_type, transform));
 	}
 	/*
 	 * ReadEntropyCodedImage()
@@ -213,7 +248,7 @@ private:
 	 * Назначение:
 	 * Читает и декодирует entropy-coded image
 	 */
-	void ReadEntropyCodedImage(const int32_t & xsize, const int32_t & ysize, utils::array<uint32_t> & data)
+	void ReadEntropyCodedImage(const uint32_t & xsize, const uint32_t & ysize, utils::array<uint32_t> & data)
 	{
 		uint32_t color_cache_bits =	ReadColorCacheBits();
 		VP8_LOSSLESS_COLOR_CACHE color_cache(color_cache_bits);
@@ -256,19 +291,25 @@ private:
 			meta_huffman_info.huffman_xsize = huffman_xsize;
 			meta_huffman_info.huffman_bits = huffman_bits;
 
+			//определяем кол-во мета кодов Хаффмана
 			for (uint32_t i = 0; i < entropy_image_size; ++i)
 			{
-			  uint32_t meta_huffman_code_index = (meta_huffman_info.entropy_image[i] >> 8) & 0xffff;
-			  meta_huffman_info.entropy_image[i] = meta_huffman_code_index;
-			  if (meta_huffman_code_index >= meta_huffman_info.meta_huffman_codes_num)
-				  meta_huffman_info.meta_huffman_codes_num = meta_huffman_code_index + 1;
+				//Индекс мета кода Хаффмана содержится в красной и зеленой компоненте
+				//вытаскиваем его их красной и зеленой компоненты
+				uint32_t meta_huffman_code_index = (meta_huffman_info.entropy_image[i] >> 8) & 0xffff;
+				//и кладем как есть обратно, чтобы в след раз нам не пришлось делать сдвиги
+				meta_huffman_info.entropy_image[i] = meta_huffman_code_index;
+				if (meta_huffman_code_index >= meta_huffman_info.meta_huffman_codes_num)
+					meta_huffman_info.meta_huffman_codes_num = meta_huffman_code_index + 1;
 			}
 		}
 
 		for(uint32_t i = 0; i < meta_huffman_info.meta_huffman_codes_num; i++)
 			meta_huffman_info.meta_huffmans.push_back(VP8_LOSSLESS_HUFFMAN(&m_bit_reader, color_cache_size));
 
-		ReadLZ77CodedImage(meta_huffman_info, m_image_width, m_image_height, m_decoded_data, color_cache);
+		//см описание m_color_indexing_xsize
+		uint32_t xsize =  m_color_indexing_xsize == 0 ? m_image_width : m_color_indexing_xsize;
+		ReadLZ77CodedImage(meta_huffman_info, xsize, m_image_height, m_decoded_data, color_cache);
 		SHA_CTX c;
 		SHA1_Init(&c);
 		SHA1_Update(&c, &m_decoded_data, m_decoded_data.size());
@@ -355,7 +396,7 @@ private:
 		uint32_t data_fills = 0;
 		uint32_t last_cached = data_fills;
 		uint32_t x = 0, y = 0;
-		while(data_fills != data.size())
+		while(data_fills != xsize * ysize)//data.size())
 		{
 			const VP8_LOSSLESS_HUFFMAN & huffman = meta_huffman_info.meta_huffmans[SelectMetaHuffman(meta_huffman_info, x, y)];
 			int32_t S = huffman.read_symbol(GREEN);
@@ -415,20 +456,90 @@ private:
 			}
 		}
 	}
+	void InverseColorIndexingTransform()
+	{
+		//инвертируем трансформацию если она есть
+		if (m_color_indexing_xsize != 0)
+		{
+			//в m_decoded_data находятся индексы, скопируем их, т.к в m_decoded_data будем формировать конечное изображение
+			utils::array<uint32_t> indices = m_decoded_data;
+			VP8_LOSSLESS_TRANSFORM & transform = m_transforms[VP8_LOSSLESS_TRANSFORM::COLOR_INDEXING_TRANSFORM];
+			//кол-во пикселей(по сути индексов) в одном байте indices
+			size_t pixels_per_byte = 1 << transform.bits();
+			//сколько бит приходится на один пиксель(индекс)
+			size_t bits_per_pixel = 8 >> transform.bits();
+			size_t mask = (1 << bits_per_pixel) - 1;
+			//пробегаемся по всем строкам
+			for(size_t y = 0; y < m_image_height; y++)
+			{
+				//берем указатель на строку в конечном изображении
+				uint32_t * row_iter = &m_decoded_data[y * m_image_width];
+				//пробегаемся по всем байтам indices
+				for(size_t x = 0; x < m_color_indexing_xsize; x++)
+					//пробегаемся по всем индексам в байте
+					for(size_t i = 0; i < pixels_per_byte; i++)
+					{
+						//вытаскиваем индекс
+						uint32_t color_table_index = (*utils::GREEN(indices[y * m_color_indexing_xsize + x]) >> (i * bits_per_pixel)) & mask;
+						//вытаскиваем цвет из палитры по индексу
+						*row_iter = transform.data()[color_table_index];
+						//сдвигаемся к следущему пикселю в строке
+						row_iter++;
+					}
+			}
+		}
+	}
 public:
 	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length)
-		: m_encoded_data(data), m_encoded_data_length(data_length), m_bit_reader(data, data_length),
-		  m_applied_transforms(0), m_next_transform(0)
+		: m_encoded_data(data), m_encoded_data_length(data_length), m_bit_reader(data, data_length)
 	{
 		ReadInfo();
 
 		m_decoded_data.realloc(m_image_width * m_image_height);
+		m_decoded_data.fill(0);
+		m_color_indexing_xsize = 0;
 
 		while(m_bit_reader.ReadBits(1))
 		{
 			ReadTransform();
 		}
 		ReadSpatiallyCodedImage();
+		InverseColorIndexingTransform();
+
+		int i =0;
+		uint8_t * rgb = new uint8_t[m_image_height * m_image_width * 3];
+				for(size_t y = 0; y < m_image_height; y++)
+					for(size_t x = 0; x < m_image_width; x++)
+					{
+						size_t j = y * m_image_width + x;
+						rgb[i++] = (m_decoded_data[j] >> 16) & 0x000000ff;
+						rgb[i++] = (m_decoded_data[j] >> 8) & 0x000000ff;
+						rgb[i++] = (m_decoded_data[j] >> 0) & 0x000000ff;
+					}
+
+				  png_structp png;
+				  png_infop info;
+				  png_uint_32 y;
+
+				  png = png_create_write_struct(PNG_LIBPNG_VER_STRING,
+				                                NULL, error_function, NULL);
+
+				  info = png_create_info_struct(png);
+
+				  setjmp(png_jmpbuf(png));
+				  FILE * out_file = fopen("1.png", "wb");
+				  png_init_io(png, out_file);
+				  png_set_IHDR(png, info, m_image_width, m_image_height, 8,
+				               PNG_COLOR_TYPE_RGB,
+				               PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
+				               PNG_FILTER_TYPE_DEFAULT);
+				  png_write_info(png, info);
+				  for (y = 0; y < m_image_height; ++y) {
+				    png_bytep row = rgb + y * m_image_width * 3;
+				    png_write_rows(png, &row, 1);
+				  }
+				  png_write_end(png, info);
+				  png_destroy_write_struct(&png, &info);
 	}
 	virtual ~VP8_LOSSLESS_DECODER()
 	{

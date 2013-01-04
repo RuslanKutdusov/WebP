@@ -61,5 +61,25 @@ uint8_t *read_file(const std::string & file_name, uint32_t & file_length_out)
 	return ret;
 }
 
+uint8_t * ALPHA(const uint32_t & argb)
+{
+        return (uint8_t*)(&argb) + 3;
+}
+
+uint8_t * RED(const uint32_t & argb)
+{
+        return (uint8_t*)(&argb) + 2;
+}
+
+uint8_t * GREEN(const uint32_t & argb)
+{
+        return (uint8_t*)(&argb) + 1;
+}
+
+uint8_t * BLUE(const uint32_t & argb)
+{
+        return (uint8_t*)(&argb);
+}
+
 }
 }

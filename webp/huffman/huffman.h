@@ -145,6 +145,7 @@ private:
 		if (!node->is_leaf())
 			return 0;
 		node->m_symbol = symbol;
+		printf("%d ", symbol);
 		return 1;
 	}
 	int code_length_to_codes(const int* const code_lengths,
@@ -214,6 +215,7 @@ public:
 					cnstr_error();
 			}
 		}
+		printf("\n");
 		if (!is_full())
 			cnstr_error();
 	}
@@ -263,6 +265,7 @@ public:
 						cnstr_error();
 			}
 		}
+		printf("\n");
 		if (!is_full())
 			cnstr_error();
 	}

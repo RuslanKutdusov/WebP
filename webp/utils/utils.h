@@ -47,6 +47,7 @@ public:
 
 	}
 	array(const array & a)
+		: m_array(NULL), m_size(0)
 	{
 		copy(a);
 	}
@@ -99,6 +100,14 @@ public:
 		memset(m_array, c, m_size * sizeof(T));
 	}
 };
+
+uint8_t * ALPHA(const uint32_t & argb);
+uint8_t * RED(const uint32_t & argb);
+uint8_t * GREEN(const uint32_t & argb);
+uint8_t * BLUE(const uint32_t & argb);
+
+typedef uint8_t* (*COLOR_t)(const uint32_t & argb);
+static const COLOR_t COLOR[4] = {ALPHA, RED, GREEN, BLUE};
 
 }
 }
