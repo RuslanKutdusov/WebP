@@ -157,7 +157,7 @@ private:
 				code_length_code_lengths[kCodeLengthCodeOrder[i]] = m_bit_reader->ReadBits(3);
 
 			read_code_length(code_length_code_lengths, alphabet_size, code_lengths);
-			m_huffman_trees.push_back(huffman::HuffmanTree(&code_lengths, alphabet_size));
+			m_huffman_trees.push_back(huffman::HuffmanTree(&code_lengths[0], alphabet_size));
 		}
 	}
 public:

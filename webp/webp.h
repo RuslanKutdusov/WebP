@@ -71,7 +71,7 @@ private:
 	void init(utils::array<uint8_t> & encoded_data)
 	{
 		//чтобы бегать по данным и не потерять указатель на начало буфера
-		const uint8_t * iterable_pointer = &encoded_data;
+		const uint8_t * iterable_pointer = &encoded_data[0];
 		try
 		{
 			read_webp_file_header(&iterable_pointer);
@@ -88,10 +88,10 @@ private:
 			//data_length это m_file_size - 8(из заголовка WEBP(4 байта) и VP8_(4 байта))
 			uint32_t vp8_data_length = m_file_size - 8;
 			utils::array<uint8_t> vp8_data(vp8_data_length);
-			memcpy(&vp8_data, iterable_pointer, vp8_data_length);
+			memcpy(&vp8_data[0], iterable_pointer, vp8_data_length);
 			if (m_file_format == FILE_FORMAT_LOSSLESS)
 			{
-				vp8l::VP8_LOSSLESS_DECODER decoder(vp8_data);
+				vp8l::VP8_LOSSLESS_DECODER decoder(&vp8_data[0], vp8_data_length);
 			}
 		}
 		catch(exception::InvalidWebPFileFormat & e)

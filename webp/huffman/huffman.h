@@ -70,7 +70,7 @@ public:
 			: m_node(NULL){}
 	public:
 		iterator(const HuffmanTree & tree)
-			: m_node(&tree.m_root)
+			: m_node(&tree.m_root[0])
 		{
 
 		}
@@ -121,7 +121,7 @@ private:
 	}
 	int add_symbol(int32_t symbol, int32_t code, int32_t code_length)
 	{
-		HuffmanTreeNode* node = &m_root;
+		HuffmanTreeNode* node = &m_root[0];
 		const HuffmanTreeNode* const max_node = m_root + m_max_nodes;
 		while (code_length-- > 0)
 		{

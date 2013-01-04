@@ -85,10 +85,6 @@ public:
 	{
 		return *m_array;
 	}
-	T* operator&() const
-	{
-		return m_array;
-	}
 	T* operator+(const int & i)
 	{
 		return m_array + i;

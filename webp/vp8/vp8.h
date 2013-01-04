@@ -158,7 +158,7 @@ private:
 	uint32_t					m_color_indexing_xsize;
 
 	VP8_LOSSLESS_DECODER()
-		//: m_encoded_data(NULL), m_encoded_data_length(0)
+		: m_encoded_data(NULL), m_encoded_data_length(0)
 	{
 
 	}
@@ -540,6 +540,7 @@ public:
 				  }
 				  png_write_end(png, info);
 				  png_destroy_write_struct(&png, &info);
+				  delete[] rgb;
 	}
 	virtual ~VP8_LOSSLESS_DECODER()
 	{

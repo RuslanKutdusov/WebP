@@ -22,7 +22,7 @@ void read_file(const std::string & file_name, uint32_t & file_length_out, array<
 	FILE *fp = NULL;
 
 #ifdef LINUX
-	fp = fopen(file_name.c_str(), "rb");
+	fp = fopen(file_name.c_str(), "r");
 #endif
 #ifdef WINDOWS
 	fopen_s(&fp, file_name.c_str(), "rb");
@@ -42,7 +42,7 @@ void read_file(const std::string & file_name, uint32_t & file_length_out, array<
 
 	buf.realloc(file_length_out);
 
-	size_t readed = fread(&buf, 1, file_length_out, fp);
+	size_t readed = fread(&buf[0], 1, file_length_out, fp);
 	if (readed != file_length_out)
 	{
 		fclose(fp);
