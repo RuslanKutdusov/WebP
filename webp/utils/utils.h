@@ -9,8 +9,6 @@ namespace webp
 namespace utils
 {
 
-uint8_t *read_file(const std::string & file_name, uint32_t & file_length_out);
-
 template <class T>
 class array
 {
@@ -108,6 +106,7 @@ uint8_t * BLUE(const uint32_t & argb);
 
 typedef uint8_t* (*COLOR_t)(const uint32_t & argb);
 static const COLOR_t COLOR[4] = {ALPHA, RED, GREEN, BLUE};
+void read_file(const std::string & file_name, uint32_t & file_length_out, array<uint8_t> & buf);
 
 }
 }
