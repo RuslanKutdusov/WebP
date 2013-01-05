@@ -47,10 +47,89 @@ static const point dist_codes_diff[BORDER_DISTANCE_CODE] = {
 		point(-6, 7), point(7, 6),  point(-7, 6), point(8, 5),  point(7, 7),  point(-7, 7), point(8, 6),  point(8, 7)};
 
 
+static uint32_t Average2(const uint32_t & a, const uint32_t & b)
+{
+	uint32_t ret;
+	uint8_t * byte_a = (uint8_t*)&a;
+	uint8_t * byte_b = (uint8_t*)&b;
+	uint8_t * byte_r = (uint8_t*)&ret;
+	for(size_t i = 0; i < 4; i++)
+		byte_r[i] = (byte_a[i] + byte_b[i]) / 2;
+	return ret;
+}
+
+static uint32_t Select(uint32_t L, uint32_t T, uint32_t TL)
+{
+  // L = left pixel, T = top pixel, TL = top left pixel.
+
+  // ARGB component estimates for prediction.
+  int32_t pAlpha = *utils::ALPHA(L) + *utils::ALPHA(T) - *utils::ALPHA(TL);
+  int32_t pRed = *utils::RED(L) + *utils::RED(T) - *utils::RED(TL);
+  int32_t pGreen = *utils::GREEN(L) + *utils::GREEN(T) - *utils::GREEN(TL);
+  int32_t pBlue = *utils::BLUE(L) + *utils::BLUE(T) - *utils::BLUE(TL);
+
+  // Manhattan distances to estimates for left and top pixels.
+  int32_t pL = abs(pAlpha - *utils::ALPHA(L)) + abs(pRed - *utils::RED(L)) +
+           abs(pGreen - *utils::GREEN(L)) + abs(pBlue - *utils::BLUE(L));
+  int32_t pT = abs(pAlpha - *utils::ALPHA(T)) + abs(pRed - *utils::RED(T)) +
+           abs(pGreen - *utils::GREEN(T)) + abs(pBlue - *utils::BLUE(T));
+
+  // Return either left or top, the one closer to the prediction.
+  if (pL <= pT)
+    return L;
+  else
+    return T;
+}
+
+static int32_t Clamp(const int32_t & a)
+{
+  return (a < 0) ? 0 : (a > 255) ?  255 : a;
+}
+
+static uint32_t ClampAddSubtractFull(const uint32_t & a, const uint32_t & b, const uint32_t & c)
+{
+	uint32_t ret;
+	for(size_t i = 0; i < 4; i++)
+	{
+		uint8_t * byte_a = utils::COLOR[i](a);
+		uint8_t * byte_b = utils::COLOR[i](b);
+		uint8_t * byte_c = utils::COLOR[i](c);
+		uint8_t * byte_ret = utils::COLOR[i](ret);
+		*byte_ret = Clamp(*byte_a + *byte_b - *byte_c);
+	}
+	return ret;
+}
+
+static uint32_t ClampAddSubtractHalf(const uint32_t & a, const uint32_t & b)
+{
+	uint32_t ret;
+	for(size_t i = 0; i < 4; i++)
+	{
+		uint8_t * byte_a = utils::COLOR[i](a);
+		uint8_t * byte_b = utils::COLOR[i](b);
+		uint8_t * byte_ret = utils::COLOR[i](ret);
+		*byte_ret = Clamp(*byte_a + (*byte_a - *byte_b) / 2);
+	}
+	return ret;
+}
+
 static void PNGAPI error_function(png_structp png, png_const_charp dummy) {
   (void)dummy;  // remove variable-unused warning
   longjmp(png_jmpbuf(png), 1);
 }
+
+struct ColorTransformElement
+{
+	uint8_t green_to_red;
+	uint8_t green_to_blue;
+	uint8_t red_to_blue;
+	ColorTransformElement(const uint32_t & argb)
+	{
+		red_to_blue = *utils::RED(argb);
+		green_to_blue = *utils::GREEN(argb);
+		green_to_red = *utils::BLUE(argb);
+	}
+};
 
 class VP8_LOSSLESS_TRANSFORM
 {
@@ -93,6 +172,14 @@ public:
 	{
 		return m_bits;
 	}
+	const uint32_t & xsize() const
+	{
+		return m_xsize;
+	}
+	const uint32_t & ysize() const
+	{
+		return m_ysize;
+	}
 	utils::array<uint32_t>& data()
 	{
 		return m_data;
@@ -123,9 +210,6 @@ private:
 		}
 	};
 private:
-	const uint8_t* const	m_encoded_data;
-	//байт в m_data
-	uint32_t				m_encoded_data_length;
 	//прочитано из заголовка vp8l
 	uint32_t				m_lossless_stream_length;
 	uint32_t					m_image_width;
@@ -135,17 +219,9 @@ private:
 	//часто приходится читать m_data по битам
 	utils::BitReader		m_bit_reader;
 
-	VP8_LOSSLESS_TRANSFORM	m_transform;
-
-	//применные трансформации,
-	//мл.бит в 1 - применен PREDICTOR_TRANSFORM, иначе  - еще не применялся
-	//след бит в 1 - применен COLOR_TRANSFORM, иначе нет - еще не применялся
-	//след бит в 1 - применен SUBTRACT_GREEN, иначе нет - еще не применялся
-	//след бит в 1 - применен COLOR_INDEXING_TRANSFORM, иначе - еще не применялся
+	//применные трансформации
 	std::map<VP8_LOSSLESS_TRANSFORM::Type, VP8_LOSSLESS_TRANSFORM> m_transforms;
-	//int32_t					m_applied_transforms;
-	//VP8_LOSSLESS_TRANSFORM m_transforms[VP8_LOSSLESS_TRANSFORM::TRANSFORM_NUMBER];
-	//int32_t					m_next_transform;
+	std::list<VP8_LOSSLESS_TRANSFORM::Type> m_transforms_order;
 
 	utils::array<uint32_t>	m_decoded_data;
 
@@ -158,7 +234,6 @@ private:
 	uint32_t					m_color_indexing_xsize;
 
 	VP8_LOSSLESS_DECODER()
-		: m_encoded_data(NULL), m_encoded_data_length(0)
 	{
 
 	}
@@ -198,6 +273,8 @@ private:
 		std::map<VP8_LOSSLESS_TRANSFORM::Type, VP8_LOSSLESS_TRANSFORM>::iterator iter = m_transforms.find(transform_type);
 		if (iter != m_transforms.end())
 			throw exception::InvalidVP8L();
+
+		m_transforms_order.push_front(transform_type);
 
 
 		VP8_LOSSLESS_TRANSFORM transform;
@@ -312,7 +389,7 @@ private:
 		ReadLZ77CodedImage(meta_huffman_info, xsize, m_image_height, m_decoded_data, color_cache);
 		SHA_CTX c;
 		SHA1_Init(&c);
-		SHA1_Update(&c, &m_decoded_data, m_decoded_data.size());
+		SHA1_Update(&c, &m_decoded_data[0], m_decoded_data.size());
 		unsigned char sha1[20];
 		SHA1_Final(sha1, &c);
 		for(int i = 0; i < 20; i++)
@@ -456,6 +533,12 @@ private:
 			}
 		}
 	}
+	/*
+	 * InverseColorIndexingTransform
+	 * Бросает исключения: нет
+	 * Назначение:
+	 * инвертирует color indexing tranform если имеется
+	 */
 	void InverseColorIndexingTransform()
 	{
 		//инвертируем трансформацию если она есть
@@ -489,9 +572,153 @@ private:
 			}
 		}
 	}
+	/*
+	 * InverseSubstractGreenTransform
+	 * Бросает исключения: нет
+	 * Назначение:
+	 * инвертирует subtract green tranform если имеется
+	 */
+	void InverseSubstractGreenTransform()
+	{
+		if (m_transforms.find(VP8_LOSSLESS_TRANSFORM::SUBTRACT_GREEN) == m_transforms.end())
+			return;
+		for(size_t y = 0; y < m_image_height; y++)
+			for(size_t x = 0; x < m_image_width; x++)
+			{
+				uint32_t i = y * m_image_width + x;
+				*utils::RED(m_decoded_data[i])  = (*utils::RED(m_decoded_data[i])  + *utils::GREEN(m_decoded_data[i])) & 0xff;
+				*utils::BLUE(m_decoded_data[i]) = (*utils::BLUE(m_decoded_data[i]) + *utils::GREEN(m_decoded_data[i])) & 0xff;
+			}
+	}
+	/*
+	 * InversePredictorTransform
+	 * Бросает исключения: нет
+	 * Назначение:
+	 * инвертирует subtract green tranform если имеется
+	 */
+	void AddPixelsEq(uint32_t* a, uint32_t b) {
+	  const uint32_t alpha_and_green = (*a & 0xff00ff00u) + (b & 0xff00ff00u);
+	  const uint32_t red_and_blue = (*a & 0x00ff00ffu) + (b & 0x00ff00ffu);
+	  *a = (alpha_and_green & 0xff00ff00u) | (red_and_blue & 0x00ff00ffu);
+	}
+	void InversePredictorTransform()
+	{
+		if (m_transforms.find(VP8_LOSSLESS_TRANSFORM::PREDICTOR_TRANSFORM) == m_transforms.end())
+			return;
+		VP8_LOSSLESS_TRANSFORM & tranform =  m_transforms[VP8_LOSSLESS_TRANSFORM::PREDICTOR_TRANSFORM];
+		for(size_t y = 0; y < m_image_height; y++)
+			for(size_t x = 0; x < m_image_width; x++)
+			{
+				size_t i = y * m_image_width + x;
+				uint32_t P;//&m_decoded_data[i];
+				if (x == 0 && y == 0)
+				{
+					P = 0xff000000;
+					AddPixelsEq(&m_decoded_data[i], P);
+					continue;
+				}
+				if (x == 0)
+				{
+					P = m_decoded_data[i - m_image_width];
+					AddPixelsEq(&m_decoded_data[i], P);
+					continue;
+				}
+				if (y == 0)
+				{
+					P = m_decoded_data[i - 1];
+					AddPixelsEq(&m_decoded_data[i], P);
+					continue;
+				}
+				uint32_t L = m_decoded_data[i - 1];
+				uint32_t T = m_decoded_data[i - m_image_width];
+				uint32_t TR = (x == m_image_width - 1) ? L : m_decoded_data[i - m_image_width + 1];
+				uint32_t TL = m_decoded_data[i - m_image_width - 1];
+				int block_index = (y >> tranform.bits()) * tranform.xsize() + (x >> tranform.bits());
+				uint32_t mode = *utils::GREEN(tranform.data()[block_index]);
+				switch (mode) {
+					case 0:
+						P = 0xff000000;
+						break;
+					case 1:
+						P = L;
+						break;
+					case 2:
+						P = T;
+						break;
+					case 3:
+						P = TR;
+						break;
+					case 4:
+						P = TL;
+						break;
+					case 5:
+						P = Average2(Average2(L, TR), T);
+						break;
+					case 6:
+						P = Average2(L, TL);
+						break;
+					case 7:
+						P = Average2(L, T);
+						break;
+					case 8:
+						P = Average2(TL, T);
+						break;
+					case 9:
+						P = Average2(T, TR);
+						break;
+					case 10:
+						P = Average2(Average2(L, TL), Average2(T, TR));
+						break;
+					case 11:
+						//Select(top[0], left, top[-1]);
+						P = Select(T, L, TL);//Select(L, T, TL); - косяк документации?
+						break;
+					case 12:
+						P = ClampAddSubtractFull(L, T, TL);
+						break;
+					case 13:
+						P = ClampAddSubtractHalf(Average2(L, T), TL);
+						break;
+					default:
+						throw exception::InvalidVP8L();
+						break;
+				}
+				AddPixelsEq(&m_decoded_data[i], P);
+			}
+	}
+	int8_t ColorTransformDelta(int8_t t, int8_t c)
+	{
+		return (t * c) >> 5;
+	}
+	void InverseColorTransform()
+	{
+		if (m_transforms.find(VP8_LOSSLESS_TRANSFORM::COLOR_TRANSFORM) == m_transforms.end())
+			return;
+		VP8_LOSSLESS_TRANSFORM & tranform =  m_transforms[VP8_LOSSLESS_TRANSFORM::COLOR_TRANSFORM];
+		for(size_t y = 0; y < m_image_height; y++)
+			for(size_t x = 0; x < m_image_width; x++)
+			{
+				size_t i = y * m_image_width + x;
+				int block_index = (y >> tranform.bits()) * tranform.xsize() + (x >> tranform.bits());
+				uint32_t data = tranform.data()[block_index];
+				ColorTransformElement cte(data);
+
+				uint8_t red = *utils::RED(m_decoded_data[i]);
+				uint8_t green = *utils::GREEN(m_decoded_data[i]);
+				uint8_t blue = *utils::BLUE(m_decoded_data[i]);
+
+				//еще один косяк документации, в написано, что надо вычитать
+				red  += ColorTransformDelta(cte.green_to_red,  green);
+				blue += ColorTransformDelta(cte.green_to_blue, green);
+				blue += ColorTransformDelta(cte.red_to_blue, red & 0xff);
+
+				*utils::RED(m_decoded_data[i]) = red & 0xff;
+				*utils::BLUE(m_decoded_data[i]) = blue & 0xff;
+			}
+	}
 public:
 	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length)
-		: m_encoded_data(data), m_encoded_data_length(data_length), m_bit_reader(data, data_length)
+		: m_bit_reader(data, data_length)
 	{
 		ReadInfo();
 
@@ -503,8 +730,20 @@ public:
 		{
 			ReadTransform();
 		}
+		//color predictor subtract-green
 		ReadSpatiallyCodedImage();
-		InverseColorIndexingTransform();
+
+		for(std::list<VP8_LOSSLESS_TRANSFORM::Type>::iterator iter = m_transforms_order.begin(); iter != m_transforms_order.end(); ++iter)
+		{
+			if (*iter == VP8_LOSSLESS_TRANSFORM::PREDICTOR_TRANSFORM)
+				InversePredictorTransform();
+			if (*iter == VP8_LOSSLESS_TRANSFORM::COLOR_TRANSFORM)
+				InverseColorTransform();
+			if (*iter == VP8_LOSSLESS_TRANSFORM::COLOR_INDEXING_TRANSFORM)
+				InverseColorIndexingTransform();
+			if (*iter == VP8_LOSSLESS_TRANSFORM::SUBTRACT_GREEN)
+				InverseSubstractGreenTransform();
+		}
 
 		int i =0;
 		uint8_t * rgb = new uint8_t[m_image_height * m_image_width * 3];
