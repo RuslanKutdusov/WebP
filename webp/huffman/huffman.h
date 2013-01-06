@@ -101,9 +101,6 @@ private:
 			return 0;
 
 		m_max_nodes = 2 * num_leaves - 1;
-		/*m_root = new(std::nothrow) HuffmanTreeNode[m_max_nodes]();
-		if (m_root == NULL)
-			return 0;*/
 		m_root.realloc(m_max_nodes);
 
 		m_num_nodes = 1;
@@ -145,7 +142,6 @@ private:
 		if (!node->is_leaf())
 			return 0;
 		node->m_symbol = symbol;
-		printf("%d ", symbol);
 		return 1;
 	}
 	int code_length_to_codes(const int* const code_lengths,
@@ -215,7 +211,6 @@ public:
 					cnstr_error();
 			}
 		}
-		printf("\n");
 		if (!is_full())
 			cnstr_error();
 	}
@@ -249,9 +244,6 @@ public:
 		}
 		else
 		{
-			/*int32_t * codes = new(std::nothrow) int[code_lengths_size];
-			if (codes == NULL)
-				cnstr_error();*/
 			utils::array<int32_t> codes(code_lengths_size);
 
 
@@ -265,7 +257,6 @@ public:
 						cnstr_error();
 			}
 		}
-		printf("\n");
 		if (!is_full())
 			cnstr_error();
 	}

@@ -82,6 +82,15 @@ public:
 	}
 };
 
+class PNGError : public Exception
+{
+public:
+	virtual ~PNGError()
+	{
+
+	}
+};
+
 }
 }
 

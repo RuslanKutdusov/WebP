@@ -1,8 +1,8 @@
 #ifndef PLATFORM_H_
 #define PLATFORM_H_
 
-//#define LINUX
-#define WINDOWS
+#define LINUX
+//#define WINDOWS
 
 #include <stdlib.h>
 #include <stdio.h>

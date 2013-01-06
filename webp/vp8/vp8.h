@@ -16,11 +16,6 @@ namespace webp
 namespace vp8l
 {
 
-static void PNGAPI error_function(png_structp png, png_const_charp dummy) {
-  (void)dummy;  // remove variable-unused warning
-  longjmp(png_jmpbuf(png), 1);
-}
-
 struct point
 {
 	int8_t x;
@@ -85,8 +80,6 @@ private:
 	//применные трансформации
 	std::map<VP8_LOSSLESS_TRANSFORM::Type, VP8_LOSSLESS_TRANSFORM> m_transforms;
 	std::list<VP8_LOSSLESS_TRANSFORM::Type> m_transforms_order;
-
-	utils::array<uint32_t>	m_decoded_data;
 
 	//ширина ARGB-изображения в последнем lz77-coded image, в случае если есть Color indexing trasformation, т.е "палитра",
 	//может отличаться от ширины изображения, которые мы декодируем, если кол-во цветом в палитре <=16.
@@ -207,7 +200,7 @@ private:
 	 * Назначение:
 	 * Читает и декодирует spatially coded image
 	 */
-	void ReadSpatiallyCodedImage()
+	void ReadSpatiallyCodedImage(utils::array<uint32_t> & argb_image)
 	{
 		uint32_t color_cache_bits =	ReadColorCacheBits();
 		VP8_LOSSLESS_COLOR_CACHE color_cache(color_cache_bits);
@@ -249,15 +242,7 @@ private:
 
 		//см описание m_color_indexing_xsize
 		uint32_t xsize =  m_color_indexing_xsize == 0 ? m_image_width : m_color_indexing_xsize;
-		ReadLZ77CodedImage(meta_huffman_info, xsize, m_image_height, m_decoded_data, color_cache);
-		/*SHA_CTX c;
-		SHA1_Init(&c);
-		SHA1_Update(&c, &m_decoded_data[0], m_decoded_data.size());
-		unsigned char sha1[20];
-		SHA1_Final(sha1, &c);
-		for(int i = 0; i < 20; i++)
-			printf("%02X", sha1[i]);
-		printf("\n");*/
+		ReadLZ77CodedImage(meta_huffman_info, xsize, m_image_height, argb_image, color_cache);
 	}
 	/*
 	 * ReadColorCacheInfo()
@@ -397,59 +382,31 @@ private:
 		}
 	}
 public:
-	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length)
+	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length, utils::array<uint32_t> & argb_image)
 		: m_bit_reader(data, data_length)
 	{
 		ReadInfo();
 
-		m_decoded_data.realloc(m_image_width * m_image_height);
-		m_decoded_data.fill(0);
+		argb_image.realloc(m_image_width * m_image_height);
+		argb_image.fill(0);
 		m_color_indexing_xsize = 0;
 
 		while(m_bit_reader.ReadBits(1))
 		{
 			ReadTransform();
 		}
-		ReadSpatiallyCodedImage();
+		ReadSpatiallyCodedImage(argb_image);
 
 		for(std::list<VP8_LOSSLESS_TRANSFORM::Type>::iterator iter = m_transforms_order.begin(); iter != m_transforms_order.end(); ++iter)
-			m_transforms[*iter].inverse(m_decoded_data, m_image_width, m_image_height);
-
-		int i =0;
-		uint8_t * rgb = new uint8_t[m_image_height * m_image_width * 3];
-				for(size_t y = 0; y < m_image_height; y++)
-					for(size_t x = 0; x < m_image_width; x++)
-					{
-						size_t j = y * m_image_width + x;
-						rgb[i++] = (m_decoded_data[j] >> 16) & 0x000000ff;
-						rgb[i++] = (m_decoded_data[j] >> 8) & 0x000000ff;
-						rgb[i++] = (m_decoded_data[j] >> 0) & 0x000000ff;
-					}
-
-				  png_structp png;
-				  png_infop info;
-				  png_uint_32 y;
-
-				  png = png_create_write_struct(PNG_LIBPNG_VER_STRING,
-				                                NULL, error_function, NULL);
-
-				  info = png_create_info_struct(png);
-
-				  setjmp(png_jmpbuf(png));
-				  FILE * out_file = fopen("1.png", "wb");
-				  png_init_io(png, out_file);
-				  png_set_IHDR(png, info, m_image_width, m_image_height, 8,
-				               PNG_COLOR_TYPE_RGB,
-				               PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
-				               PNG_FILTER_TYPE_DEFAULT);
-				  png_write_info(png, info);
-				  for (y = 0; y < m_image_height; ++y) {
-				    png_bytep row = rgb + y * m_image_width * 3;
-				    png_write_rows(png, &row, 1);
-				  }
-				  png_write_end(png, info);
-				  png_destroy_write_struct(&png, &info);
-				  delete[] rgb;
+			m_transforms[*iter].inverse(argb_image, m_image_width, m_image_height);
+	}
+	const uint32_t image_width()
+	{
+		return m_image_width;
+	}
+	const uint32_t image_height()
+	{
+		return m_image_height;
 	}
 	virtual ~VP8_LOSSLESS_DECODER()
 	{
