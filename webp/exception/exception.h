@@ -64,6 +64,33 @@ public:
 	}
 };
 
+class InvalidVP8L : public Exception
+{
+public:
+	virtual ~InvalidVP8L()
+	{
+
+	}
+};
+
+class InvalidHuffman : public Exception
+{
+public:
+	virtual ~InvalidHuffman()
+	{
+
+	}
+};
+
+class PNGError : public Exception
+{
+public:
+	virtual ~PNGError()
+	{
+
+	}
+};
+
 }
 }
 

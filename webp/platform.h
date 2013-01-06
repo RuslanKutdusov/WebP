@@ -4,14 +4,14 @@
 #define LINUX
 //#define WINDOWS
 
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <errno.h>
 #include <string>
 #include <string.h>
-
+#include <vector>
+#include <map>
 
 #ifdef LINUX
 #include <sys/types.h>
