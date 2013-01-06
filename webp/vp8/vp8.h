@@ -7,7 +7,7 @@
 #include "color_cache.h"
 #include "transform.h"
 #include "huffman.h"
-#include <openssl/sha.h>
+//#include <openssl/sha.h>
 #include <png.h>
 
 
@@ -250,14 +250,14 @@ private:
 		//см описание m_color_indexing_xsize
 		uint32_t xsize =  m_color_indexing_xsize == 0 ? m_image_width : m_color_indexing_xsize;
 		ReadLZ77CodedImage(meta_huffman_info, xsize, m_image_height, m_decoded_data, color_cache);
-		SHA_CTX c;
+		/*SHA_CTX c;
 		SHA1_Init(&c);
 		SHA1_Update(&c, &m_decoded_data[0], m_decoded_data.size());
 		unsigned char sha1[20];
 		SHA1_Final(sha1, &c);
 		for(int i = 0; i < 20; i++)
 			printf("%02X", sha1[i]);
-		printf("\n");
+		printf("\n");*/
 	}
 	/*
 	 * ReadColorCacheInfo()
@@ -410,7 +410,6 @@ public:
 		{
 			ReadTransform();
 		}
-		//color predictor subtract-green
 		ReadSpatiallyCodedImage();
 
 		for(std::list<VP8_LOSSLESS_TRANSFORM::Type>::iterator iter = m_transforms_order.begin(); iter != m_transforms_order.end(); ++iter)

@@ -21,6 +21,9 @@
     <ClCompile Include="webp\utils\utils.cpp">
       <Filter>Файлы исходного кода</Filter>
     </ClCompile>
+    <ClCompile Include="webp\vp8\transform.cpp">
+      <Filter>Файлы исходного кода</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="webp\platform.h">
@@ -42,6 +45,15 @@
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
     <ClInclude Include="webp\vp8\vp8.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="webp\vp8\transform.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="webp\vp8\color_cache.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="webp\vp8\huffman.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
   </ItemGroup>
