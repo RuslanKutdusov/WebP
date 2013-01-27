@@ -7,6 +7,7 @@
 #include "color_cache.h"
 #include "transform.h"
 #include "huffman.h"
+#include "../utils/bit_writer.h"
 //#include <openssl/sha.h>
 #include <png.h>
 
@@ -60,7 +61,7 @@ private:
 		uint32_t huffman_bits;
 		uint32_t huffman_xsize;
 		uint32_t meta_huffman_codes_num;
-		utils::array<uint32_t> entropy_image;
+		utils::pixel_array entropy_image;
 		MetaHuffmanInfo()
 			: huffman_bits(0), huffman_xsize(0), meta_huffman_codes_num(1)
 		{
@@ -181,7 +182,7 @@ private:
 	 * Назначение:
 	 * Читает и декодирует entropy-coded image
 	 */
-	void ReadEntropyCodedImage(const uint32_t & xsize, const uint32_t & ysize, utils::array<uint32_t> & data)
+	void ReadEntropyCodedImage(const uint32_t & xsize, const uint32_t & ysize, utils::pixel_array & data)
 	{
 		uint32_t color_cache_bits =	ReadColorCacheBits();
 		VP8_LOSSLESS_COLOR_CACHE color_cache(color_cache_bits);
@@ -200,7 +201,7 @@ private:
 	 * Назначение:
 	 * Читает и декодирует spatially coded image
 	 */
-	void ReadSpatiallyCodedImage(utils::array<uint32_t> & argb_image)
+	void ReadSpatiallyCodedImage(utils::pixel_array & argb_image)
 	{
 		uint32_t color_cache_bits =	ReadColorCacheBits();
 		VP8_LOSSLESS_COLOR_CACHE color_cache(color_cache_bits);
@@ -315,7 +316,7 @@ private:
 	 * Назначение:
 	 * читает и декодирует lz77 coded image
 	 */
-	void ReadLZ77CodedImage(const MetaHuffmanInfo & meta_huffman_info, const uint32_t & xsize, const uint32_t & ysize, utils::array<uint32_t> & data,
+	void ReadLZ77CodedImage(const MetaHuffmanInfo & meta_huffman_info, const uint32_t & xsize, const uint32_t & ysize, utils::pixel_array & data,
 								VP8_LOSSLESS_COLOR_CACHE & color_cache)
 	{
 		uint32_t data_fills = 0;
@@ -382,7 +383,7 @@ private:
 		}
 	}
 public:
-	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length, utils::array<uint32_t> & argb_image)
+	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length, utils::pixel_array & argb_image)
 		: m_bit_reader(data, data_length)
 	{
 		ReadInfo();
@@ -412,9 +413,21 @@ public:
 	{
 
 	}
-	friend class VP8_LOSSLESS_TRANSFORM;
 };
 
+class VP8_LOSSLESS_CODER
+{
+private:
+	VP8_LOSSLESS_CODER()
+	{
+
+	}
+public:
+	VP8_LOSSLESS_CODER(const utils::pixel_array & rgb_image, const uint32_t & width, const uint32_t & height)
+	{
+
+	}
+};
 }
 }
 

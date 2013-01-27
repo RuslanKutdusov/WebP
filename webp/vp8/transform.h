@@ -12,7 +12,7 @@ namespace webp
 namespace vp8l
 {
 
-void AddPixelsEq(uint32_t* a, uint32_t b);
+void PixelsSum(uint32_t* a, uint32_t b);
 uint32_t Average2(const uint32_t & a, const uint32_t & b);
 uint32_t Select(uint32_t T, uint32_t L, uint32_t TL);
 int32_t Clamp(const int32_t & a);
@@ -47,17 +47,17 @@ private:
 	uint32_t				m_xsize;
 	uint32_t				m_ysize;
 	uint32_t				m_bits;
-	utils::array<uint32_t>	m_data;
+	utils::pixel_array	m_data;
 	/*
 		 * InverseColorIndexingTransform
 		 * Бросает исключения: нет
 		 * Назначение:
 		 * инвертирует color indexing tranform если имеется
 		 */
-		void InverseColorIndexingTransform(utils::array<uint32_t> & argb_image, const uint32_t & image_width, const uint32_t & image_height)
+		void InverseColorIndexingTransform(utils::pixel_array & argb_image, const uint32_t & image_width, const uint32_t & image_height)
 		{
 			//в argb_image находятся индексы, скопируем их, т.к в argb_image будем формировать конечное изображение
-			utils::array<uint32_t> indices = argb_image;
+			utils::pixel_array indices = argb_image;
 			//кол-во пикселей(по сути индексов) в одном байте indices
 			size_t pixels_per_byte = 1 << m_bits;
 			//сколько бит приходится на один пиксель(индекс)
@@ -89,7 +89,7 @@ private:
 		 * Назначение:
 		 * инвертирует subtract green tranform если имеется
 		 */
-		void InverseSubstractGreenTransform(utils::array<uint32_t> & argb_image, const uint32_t & image_width, const uint32_t & image_height)
+		void InverseSubstractGreenTransform(utils::pixel_array & argb_image, const uint32_t & image_width, const uint32_t & image_height)
 		{
 			for(size_t y = 0; y < image_height; y++)
 				for(size_t x = 0; x < image_width; x++)
@@ -105,7 +105,7 @@ private:
 		 * Назначение:
 		 * инвертирует subtract green tranform если имеется
 		 */
-		void InversePredictorTransform(utils::array<uint32_t> & argb_image, const uint32_t & image_width, const uint32_t & image_height)
+		void InversePredictorTransform(utils::pixel_array & argb_image, const uint32_t & image_width, const uint32_t & image_height)
 		{
 			for(size_t y = 0; y < image_height; y++)
 				for(size_t x = 0; x < image_width; x++)
@@ -115,19 +115,19 @@ private:
 					if (x == 0 && y == 0)
 					{
 						P = 0xff000000;
-						AddPixelsEq(&argb_image[i], P);
+						PixelsSum(&argb_image[i], P);
 						continue;
 					}
 					if (x == 0)
 					{
 						P = argb_image[i - image_width];
-						AddPixelsEq(&argb_image[i], P);
+						PixelsSum(&argb_image[i], P);
 						continue;
 					}
 					if (y == 0)
 					{
 						P = argb_image[i - 1];
-						AddPixelsEq(&argb_image[i], P);
+						PixelsSum(&argb_image[i], P);
 						continue;
 					}
 					uint32_t L = argb_image[i - 1];
@@ -184,14 +184,14 @@ private:
 							throw exception::InvalidVP8L();
 							break;
 					}
-					AddPixelsEq(&argb_image[i], P);
+					PixelsSum(&argb_image[i], P);
 				}
 		}
 		int8_t ColorTransformDelta(int8_t t, int8_t c)
 		{
 			return (t * c) >> 5;
 		}
-		void InverseColorTransform(utils::array<uint32_t> & argb_image, const uint32_t & image_width, const uint32_t & image_height)
+		void InverseColorTransform(utils::pixel_array & argb_image, const uint32_t & image_width, const uint32_t & image_height)
 		{
 			for(size_t y = 0; y < image_height; y++)
 				for(size_t x = 0; x < image_width; x++)
@@ -252,7 +252,7 @@ public:
 	{
 		return m_ysize;
 	}
-	utils::array<uint32_t>& data()
+	utils::pixel_array& data()
 	{
 		return m_data;
 	}
@@ -260,7 +260,7 @@ public:
 	{
 		return m_data.size();
 	}
-	void inverse(utils::array<uint32_t> & argb_image, const uint32_t & image_width, const uint32_t & image_height)
+	void inverse(utils::pixel_array & argb_image, const uint32_t & image_width, const uint32_t & image_height)
 	{
 		if (m_type == VP8_LOSSLESS_TRANSFORM::PREDICTOR_TRANSFORM)
 			InversePredictorTransform(argb_image, image_width, image_height);

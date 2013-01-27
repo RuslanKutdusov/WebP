@@ -5,7 +5,7 @@ namespace webp
 namespace vp8l
 {
 
-void AddPixelsEq(uint32_t* a, uint32_t b)
+void PixelsSum(uint32_t* a, uint32_t b)
 {
 	const uint32_t alpha_and_green = (*a & 0xff00ff00u) + (b & 0xff00ff00u);
 	const uint32_t red_and_blue = (*a & 0x00ff00ffu) + (b & 0x00ff00ffu);

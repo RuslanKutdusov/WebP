@@ -79,7 +79,7 @@ public:
 		if (file_length < WEBP_FILE_HEADER_LENGTH)
 			throw exception::InvalidWebPFileFormat();
 		init(buf);
-		printf("%u\n", m_argb_image.size());
+		printf("%lu\n", m_argb_image.size());
 	}
 	void save2png(const std::string & file_name)
 	{

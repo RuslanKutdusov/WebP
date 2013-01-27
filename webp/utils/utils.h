@@ -94,6 +94,9 @@ public:
 		memset(m_array, c, m_size * sizeof(T));
 	}
 };
+typedef array<uint32_t> pixel_array;
+typedef array<uint8_t> byte_array;
+
 
 uint8_t * ALPHA(const uint32_t & argb);
 uint8_t * RED(const uint32_t & argb);
