@@ -20,7 +20,7 @@ class BitWriterTest;
 class BitWriter
 {
 private:
-	std::deque<byte_array >	m_buffer;
+	std::deque<byte_array>		m_buffer;
 	uint32_t					m_size;//байт в буфере
 	uint32_t					m_last_byte_index;//индекс на байт в который пишем биты
 	uint32_t					m_bits_writed_in_byte;//сколько бит записали в байт

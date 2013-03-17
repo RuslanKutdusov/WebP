@@ -3,7 +3,7 @@
 #include "platform.h"
 #include "exception/exception.h"
 #include "utils/utils.h"
-#include "vp8/vp8.h"
+#include "vp8l/vp8l.h"
 #include <png.h>
 
 #define WEBP_FILE_HEADER_LENGTH 12
