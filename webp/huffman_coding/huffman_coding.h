@@ -291,43 +291,21 @@ public:
 namespace enc
 {
 
-class HuffmanTreeNode
-{
+class RLESequence{
 private:
-	HuffmanTreeNode*	m_left;
-	HuffmanTreeNode*	m_right;
-	int32_t				m_symbol;
-	uint32_t			m_level;
-public:
-	HuffmanTreeNode()
-		: m_left(NULL), m_right(NULL), m_symbol(-1)
-	{
-
-	}
-	virtual ~HuffmanTreeNode()
-	{
-		if (m_left != NULL)
-			delete m_left;
-		if (m_right != NULL)
-			delete m_right;
-	}
-};
-
-class CompressedHuffmanTreeCodes{
-private:
-	struct CompressedHuffmanTreeCode{
+	struct RLESequenceElement{
 		uint16_t	m_code_length;
 		uint8_t		m_extra_bits;
-		CompressedHuffmanTreeCode(const uint16_t & code_length, const uint16_t & extra_bits)
+		RLESequenceElement(const uint16_t & code_length, const uint16_t & extra_bits)
 				: m_code_length(code_length), m_extra_bits(extra_bits)
 		{
 
 		}
 	};
-	std::vector<CompressedHuffmanTreeCode> m_code_lengths;
+	std::vector<RLESequenceElement> m_code_lengths;
 public:
 	void add(const uint16_t & code_length, const uint8_t & extra_bits){
-		m_code_lengths.push_back(CompressedHuffmanTreeCode(code_length, extra_bits));
+		m_code_lengths.push_back(RLESequenceElement(code_length, extra_bits));
 	}
 	const uint16_t & code_length(size_t i) const{
 		return m_code_lengths[i].m_code_length;
@@ -504,7 +482,7 @@ public:
 	const codes_t & get_codes() const{
 		return m_codes;
 	}
-	void compress(CompressedHuffmanTreeCodes & compressed_tree_codes) const{
+	void compress(RLESequence & rle_sequence) const{
 		uint16_t prev_code_length;
 		//RLE
 		for(size_t i = 0; i < m_num_symbols; ){
@@ -525,22 +503,22 @@ public:
 					//если длина серии <3, то просто записываем ее
 					if (reps < 3){
 						for(size_t j = 0; j < reps; j++)
-							compressed_tree_codes.add(0, 0);
+							rle_sequence.add(0, 0);
 						break;
 					}
 					//если длина серии <11, то пишем код 17, и экстра биты = длина серии - 3(чтобы влезть в 3 бита)
 					else if (reps < 11){
-						compressed_tree_codes.add(17, reps - 3);
+						rle_sequence.add(17, reps - 3);
 						break;
 					}
 					//если длина серии <139, то пишем код 18, и экстра биты = длина серии - 11(чтобы влезть в 7 бит)
 					else if (reps < 139){
-						compressed_tree_codes.add(18, reps - 11);
+						rle_sequence.add(18, reps - 11);
 						break;
 					}
 					//иначе пишем код 18, и экстра биты = 127(чтобы влезть в 3 бита), уменьшаем длину серии и в цикл
 					else{
-						compressed_tree_codes.add(18, 138 - 11);
+						rle_sequence.add(18, 138 - 11);
 						reps -= 138;
 					}
 				}
@@ -548,20 +526,20 @@ public:
 			else {
 				if (prev_code_length != code_length){
 					size_t reps = runs;
-					compressed_tree_codes.add(code_length, 0);
+					rle_sequence.add(code_length, 0);
 					reps--;
 					while(reps >= 1){
 						if (reps < 3){
 							for(size_t j = 0; j < reps; j++)
-								compressed_tree_codes.add(code_length, 0);
+								rle_sequence.add(code_length, 0);
 							break;
 						}
 						else if (reps < 7){
-							compressed_tree_codes.add(16, reps - 3);
+							rle_sequence.add(16, reps - 3);
 							break;
 						}
 						else{
-							compressed_tree_codes.add(16, 6 - 3);
+							rle_sequence.add(16, 6 - 3);
 							reps -= 6;
 						}
 					}

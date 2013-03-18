@@ -201,16 +201,16 @@ class VP8_LOSSLESS_HUFFMAN{
 private:
 	utils::BitWriter * m_bit_writer;
 
-	void write_compressed_code(huffman_coding::enc::HuffmanTreeCodes & codes){
+	void write_compressed_code(const huffman_coding::enc::HuffmanTreeCodes & codes) const{
 		//сжимаем по RLE исходные длины кодов
-		huffman_coding::enc::CompressedHuffmanTreeCodes compressed_tree_code_lengths;
-		codes.compress(compressed_tree_code_lengths);
+		huffman_coding::enc::RLESequence rle_sequence;
+		codes.compress(rle_sequence);
 		utils::array<uint16_t> histo(kCodeLengthCodes);
 		histo.fill(0);
-		for(size_t i = 0; i < compressed_tree_code_lengths.size(); i++)
-			++histo[compressed_tree_code_lengths.code_length(i)];
+		for(size_t i = 0; i < rle_sequence.size(); i++)
+			++histo[rle_sequence.code_length(i)];
 
-		huffman_coding::enc::HuffmanTreeCodes compressed_tree(histo);
+		huffman_coding::enc::HuffmanTreeCodes tree_of_rle_sequence(histo);
 
 		//определяем кол-во длин кодов для записи, нулевые длины кодов не пишем
 		//мин. 4 длин кодов
@@ -218,33 +218,33 @@ private:
 		for(; code_lengths2write > 4; --code_lengths2write)
 		{
 			size_t i = kCodeLengthCodeOrder[code_lengths2write - 1];
-			if (compressed_tree.get_lengths()[i] != 0)
+			if (tree_of_rle_sequence.get_lengths()[i] != 0)
 				break;
 		}
 		m_bit_writer->WriteBits(code_lengths2write, 4);//пишем кол-во длин кодов
 		for(size_t i = 0; i < code_lengths2write; i++)
 		{
 			size_t j = kCodeLengthCodeOrder[i];
-			m_bit_writer->WriteBits(compressed_tree.get_lengths()[j], 3);
+			m_bit_writer->WriteBits(tree_of_rle_sequence.get_lengths()[j], 3);
 		}
 
 		m_bit_writer->WriteBit(0);//незадокументированный бит!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 		//записываем RLE посл-ть
-		for(size_t i = 0; i < compressed_tree_code_lengths.size(); i++){
-			uint16_t j = compressed_tree_code_lengths.code_length(i);
-			uint8_t extra_bits = compressed_tree_code_lengths.extra_bits(i);
-			m_bit_writer->WriteBits(compressed_tree.get_codes()[j], compressed_tree.get_lengths()[j]);
-			if (j == 16)
+		for(size_t i = 0; i < rle_sequence.size(); i++){
+			uint16_t sequence_element = rle_sequence.code_length(i);
+			uint8_t extra_bits = rle_sequence.extra_bits(i);
+			m_bit_writer->WriteBits(tree_of_rle_sequence.get_codes()[sequence_element], tree_of_rle_sequence.get_lengths()[sequence_element]);
+			if (sequence_element == 16)
 				m_bit_writer->WriteBits(extra_bits, 2);
-			if (j == 17)
+			if (sequence_element == 17)
 				m_bit_writer->WriteBits(extra_bits, 3);
-			if (j == 18)
+			if (sequence_element == 18)
 				m_bit_writer->WriteBits(extra_bits, 7);
 		}
 
 	}
-	void write_codes(huffman_coding::enc::HuffmanTreeCodes & codes){
+	void write_codes(const huffman_coding::enc::HuffmanTreeCodes & codes) const{
 		int count = 0;
 		uint32_t symbols[2] = { 0, 0 };
 
@@ -278,7 +278,7 @@ private:
 			}
 		} else {
 			m_bit_writer->WriteBit(0);//не simple length code
-			//return StoreFullHuffmanCode(bw, huffman_code);
+			write_compressed_code(codes);
 		}
 	}
 	VP8_LOSSLESS_HUFFMAN()
