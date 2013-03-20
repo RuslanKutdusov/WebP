@@ -1,5 +1,9 @@
 #include "../platform.h"
 #include <deque>
+#ifdef TEST
+#include <openssl/sha.h>
+#endif
+
 
 namespace webp
 {
@@ -18,23 +22,34 @@ public:
 			: distance(dist), length(len), symbol(s){}
 	};
 private:
-	std::deque<T>		m_search_buffer;
-	std::deque<T>		m_look_ahead_buffer;
+#ifdef TEST
+	unsigned char source_hash[20];
+#endif
 	std::deque<token>	m_output;
 	uint32_t			m_max_distance;
 	uint32_t			m_max_length;
 	void pack(const T* data, const uint32_t & size){
+#ifdef TEST
+		SHA1((unsigned char*)data, size, source_hash);
+#endif
 		size_t i = 0;
-		/*while(i != size || m_look_ahead_buffer.size() != 0){
-			for(; i != size && m_look_ahead_buffer.size() < m_max_length; i++)
-				m_look_ahead_buffer.push_back(data[i]);
+		uint32_t search_buffer_index = 0;
+		uint32_t la_buffer_index = 0;
+		uint32_t la_buffer_length = 0;
+		while(i != size || la_buffer_length != 0){
+			if (la_buffer_length < m_max_length && i != size)
+			{
+				uint32_t remain_in_buf = m_max_length - la_buffer_length;
+				uint32_t remain_in_data = size - i;
+				la_buffer_length += remain_in_buf > remain_in_data ? remain_in_data : remain_in_buf;
+				i += remain_in_buf > remain_in_data ? remain_in_data : remain_in_buf;
+			}
 
-			if (m_look_ahead_buffer.size() == 1){
-				T symbol = m_look_ahead_buffer.front();
-				m_look_ahead_buffer.pop_front();
-				m_search_buffer.push_back(symbol);
-				if (m_search_buffer.size() > m_max_distance)
-					m_search_buffer.pop_front();
+			if (la_buffer_length == 1){
+				T symbol = data[la_buffer_index++];
+				la_buffer_length--;
+				if (la_buffer_index -  search_buffer_index > m_max_distance)
+					search_buffer_index++;
 				m_output.push_back(token(0, 0, symbol));
 				continue;
 			}
@@ -42,43 +57,44 @@ private:
 			token temp_token;
 			temp_token.length = 0;
 			bool match = false;
-			for(int j = m_search_buffer.size() - 1; j >= 0; j--){
+			const T* sb_stop = data + la_buffer_index;
+			for(int j = la_buffer_index - 1; j >= (int)search_buffer_index; j--){
+				const T* search_buffer_iter = &data[j];
+				const T* la_buffer_iter = &data[la_buffer_index];
 				uint32_t length = 0;
-				uint32_t distance = m_search_buffer.size() - j;
-				for(size_t k = j; k < m_search_buffer.size(); k++){
-					if (m_search_buffer[k] == m_look_ahead_buffer[k - j])
+				uint32_t distance = la_buffer_index - j;
+				while(length <= m_max_length && search_buffer_iter != sb_stop){
+					if (*search_buffer_iter++ == *la_buffer_iter++)
 						length++;
 					else
 						break;
 				}
 				if (length){
 					if (length >= temp_token.length)
-						temp_token = token(distance, length, m_look_ahead_buffer[length]);
+						temp_token = token(distance, length, data[length + la_buffer_index]);
 					match = true;
 				}
 			}
 			if (match){
 				m_output.push_back(temp_token);
-				for(size_t j = 0; j <= temp_token.length; j++){
-					T symbol = m_look_ahead_buffer.front();
-					m_look_ahead_buffer.pop_front();
-					m_search_buffer.push_back(symbol);
-					if (m_search_buffer.size() > m_max_distance)
-						m_search_buffer.pop_front();
+
+				la_buffer_index += temp_token.length + 1;
+				la_buffer_length -= temp_token.length + 1;
+				if (la_buffer_length > m_max_length)
+					la_buffer_length = 0;
+				if (la_buffer_index - search_buffer_index > m_max_distance){
+					search_buffer_index = la_buffer_index - m_max_distance;
 				}
 			}
 			else{
-				T symbol = m_look_ahead_buffer.front();
-				m_look_ahead_buffer.pop_front();
-				m_search_buffer.push_back(symbol);
-				if (m_search_buffer.size() > m_max_distance)
-						m_search_buffer.pop_front();
+				T symbol = data[la_buffer_index++];
+				la_buffer_length--;
+				if (la_buffer_index -  search_buffer_index > m_max_distance)
+					search_buffer_index++;
 				m_output.push_back(token(0, 0, symbol));
+				continue;
 			}
-		}*/
-		/*for(size_t i = 0; i < m_output.size(); i++){
-			printf("%u %u %c\n", m_output[i].distance, m_output[i].length, m_output[i].symbol);
-		}*/
+		}
 	}
 public:
 	LZ77(const uint32_t & max_distance, const uint32_t & max_length, const utils::array<T> & data)
@@ -94,6 +110,26 @@ public:
 	const std::deque<token> & output() const{
 		return m_output;
 	}
+#ifdef TEST
+	void test_unpack(const size_t & size){
+		T* buf = new T[size];
+		T* pointer = buf;
+		for(size_t i = 0; i < m_output.size(); i++){
+			token & t = m_output[i];
+			if (t.distance == 0 && t.length == 0)
+				*pointer++ = t.symbol;
+			else{
+				for(size_t i = 0; i < t.length; i++, pointer++)
+					*pointer = *(pointer - t.distance);
+				*pointer++ = t.symbol;
+			}
+		}
+		unsigned char hash[20];
+		SHA1((unsigned char*)buf, size, hash);
+		printf("hash is ok=%d\n", memcmp(hash, source_hash, 20));
+		delete[] buf;
+	}
+#endif
 };
 
 }
