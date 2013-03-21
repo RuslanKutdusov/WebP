@@ -32,7 +32,7 @@ enum MetaHuffmanCode
 	DIST_PREFIX = 4
 };
 
-static const int kCodeLengthCodes = 19;
+static const size_t kCodeLengthCodes = 19;
 static const int kCodeLengthCodeOrder[kCodeLengthCodes] = {
   17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 };
@@ -62,11 +62,11 @@ private:
 			iter.next(m_bit_reader->ReadBits(1));
 		return (*iter).symbol();
 	}
-	void read_code_length(const int* const code_length_code_lengths, int32_t num_symbols, utils::array<int32_t> & code_lengths)
+	void read_code_length(const utils::array<code_length_t> & code_length_code_lengths, const size_t & num_symbols, utils::array<code_length_t> & code_lengths)
 	{
-		int symbol;
-		int max_symbol;
-		webp::huffman_coding::dec::HuffmanTree tree(code_length_code_lengths,  kCodeLengthCodes);
+		symbol_t symbol;
+		symbol_t max_symbol;
+		webp::huffman_coding::dec::HuffmanTree tree(code_length_code_lengths);
 
 		////////////////////////////////////////////////////
 		//Незадокументированный кусок кода, копипаст из libwebp
@@ -85,14 +85,14 @@ private:
 
 
 		symbol = 0;
-		int prev_code_len = 8;
+		code_length_t prev_code_len = 8;
 		while (symbol < num_symbols)
 		{
-			int code_len;
+			code_length_t code_len;
 			if (max_symbol-- == 0)
 				break;
 			code_len = read_symbol(tree);
-			if (code_len < 16)
+			if (code_len < NON_ZERO_REPS_CODE)
 			{
 				code_lengths[symbol++] = code_len;
 				if (code_len != 0)
@@ -100,20 +100,20 @@ private:
 			}
 			else
 			{
-				int repeat_count = 0;
+				size_t repeat_count = 0;
 				bool repeat_last_code_len = false;
-				if (code_len == 16)
+				if (code_len == NON_ZERO_REPS_CODE)
 				{
 					repeat_count = m_bit_reader->ReadBits(2) + 3;
 					repeat_last_code_len = true;
 				}
-				if (code_len == 17)
+				if (code_len == ZERO_11_REPS_CODE)
 					repeat_count = m_bit_reader->ReadBits(3) + 3;
-				if (code_len == 18)
+				if (code_len == ZERO_138_REPS_CODE)
 					repeat_count = m_bit_reader->ReadBits(7) + 11;
 				if (symbol + repeat_count > num_symbols)
 					throw exception::InvalidHuffman();
-				for(int i = 0; i < repeat_count; i++)
+				for(size_t i = 0; i < repeat_count; i++)
 					code_lengths[symbol++] = repeat_last_code_len ? prev_code_len : 0;
 			}
 		}
@@ -131,11 +131,11 @@ private:
 			//если first_symbol_len_code == 1, тогда длина первого кода 8 бит, иначе 1
 			uint32_t first_symbol_len_code = m_bit_reader->ReadBits(1);
 			//массив под символы
-			int32_t symbols[2];
+			symbol_t symbols[2];
 			//массив под коды символов
-			int32_t codes[2];
+			code_t codes[2];
 			//длины кодов символов
-			int32_t code_lengths[2];
+			code_length_t code_lengths[2];
 			//читаем первый символ
 			symbols[0] = m_bit_reader->ReadBits(1 + 7 * first_symbol_len_code);
 			codes[0] = 0;
@@ -152,25 +152,35 @@ private:
 		}
 		else
 		{
-			int32_t code_length_code_lengths[kCodeLengthCodes] = { 0 };
-			int32_t num_codes = m_bit_reader->ReadBits(4) + 4;
+			utils::array<code_length_t> code_length_code_lengths(kCodeLengthCodes);
+			code_length_code_lengths.fill(0);
+			size_t num_codes = m_bit_reader->ReadBits(4) + 4;
 			if (num_codes > kCodeLengthCodes)
 				throw exception::InvalidHuffman();
 
-			utils::array<int32_t> code_lengths(alphabet_size);
+			utils::array<code_length_t> code_lengths(alphabet_size);
 			code_lengths.fill(0);
 
-			for (int32_t i = 0; i < num_codes; ++i)
+			for (size_t i = 0; i < num_codes; ++i)
 				code_length_code_lengths[kCodeLengthCodeOrder[i]] = m_bit_reader->ReadBits(3);
 
 			read_code_length(code_length_code_lengths, alphabet_size, code_lengths);
-			m_huffman_trees.push_back(webp::huffman_coding::dec::HuffmanTree(&code_lengths[0], alphabet_size));
+			m_huffman_trees.push_back(webp::huffman_coding::dec::HuffmanTree(code_lengths));
 		}
 	}
 public:
 	/*
 	 * Исключение: InvalidHuffman
 	 */
+	VP8_LOSSLESS_HUFFMAN(utils::BitReader * bit_reader)
+		: m_bit_reader(bit_reader)
+	{
+
+
+	}
+	void read(){
+		read_code(256);
+	}
 	VP8_LOSSLESS_HUFFMAN(utils::BitReader * bit_reader, const uint32_t & color_cache_size)
 		: m_bit_reader(bit_reader)
 	{
@@ -197,11 +207,12 @@ public:
 namespace enc
 {
 
+
 class VP8_LOSSLESS_HUFFMAN{
 private:
 	utils::BitWriter * m_bit_writer;
 
-	void write_compressed_code(const huffman_coding::enc::HuffmanTreeCodes & codes) const{
+	void write_compressed_code(const huffman_coding::enc::HuffmanTree & codes) const{
 		//сжимаем по RLE исходные длины кодов
 		huffman_coding::enc::RLESequence rle_sequence;
 		codes.compress(rle_sequence);
@@ -210,7 +221,8 @@ private:
 		for(size_t i = 0; i < rle_sequence.size(); i++)
 			++histo[rle_sequence.code_length(i)];
 
-		huffman_coding::enc::HuffmanTreeCodes tree_of_rle_sequence(histo);
+		huffman_coding::enc::HuffmanTree tree_of_rle_sequence(histo, 7);
+
 
 		//определяем кол-во длин кодов для записи, нулевые длины кодов не пишем
 		//мин. 4 длин кодов
@@ -221,7 +233,7 @@ private:
 			if (tree_of_rle_sequence.get_lengths()[i] != 0)
 				break;
 		}
-		m_bit_writer->WriteBits(code_lengths2write, 4);//пишем кол-во длин кодов
+		m_bit_writer->WriteBits(code_lengths2write - 4, 4);//пишем кол-во длин кодов
 		for(size_t i = 0; i < code_lengths2write; i++)
 		{
 			size_t j = kCodeLengthCodeOrder[i];
@@ -235,26 +247,26 @@ private:
 			uint16_t sequence_element = rle_sequence.code_length(i);
 			uint8_t extra_bits = rle_sequence.extra_bits(i);
 			m_bit_writer->WriteBits(tree_of_rle_sequence.get_codes()[sequence_element], tree_of_rle_sequence.get_lengths()[sequence_element]);
-			if (sequence_element == 16)
+			if (sequence_element == NON_ZERO_REPS_CODE)
 				m_bit_writer->WriteBits(extra_bits, 2);
-			if (sequence_element == 17)
+			if (sequence_element == ZERO_11_REPS_CODE)
 				m_bit_writer->WriteBits(extra_bits, 3);
-			if (sequence_element == 18)
+			if (sequence_element == ZERO_138_REPS_CODE)
 				m_bit_writer->WriteBits(extra_bits, 7);
 		}
 
 	}
-	void write_codes(const huffman_coding::enc::HuffmanTreeCodes & codes) const{
+	void write_codes(const huffman_coding::enc::HuffmanTree & codes) const{
 		int count = 0;
 		uint32_t symbols[2] = { 0, 0 };
 
 		// считаем кол-во символов, у которых длина кода != 0
-		for (size_t i = 0; i < codes.get_num_symbols(); ++i){
-			if (codes.get_lengths()[i] != 0)
-				if (count < 2) symbols[count] = i;
-					++count;
-			if (count == 2)
-				break;
+		for (size_t i = 0; i < codes.get_num_symbols() && count < 3; ++i){
+			if (codes.get_lengths()[i] != 0){
+				if (count < 2)
+					symbols[count] = i;
+				++count;
+			}
 		}
 
 		if (count == 0) {   //символов нет, сл-но может об этом сказать с помощью simple length code
@@ -287,12 +299,13 @@ private:
 
 	}
 public:
-	VP8_LOSSLESS_HUFFMAN(utils::BitWriter * bw)
+	VP8_LOSSLESS_HUFFMAN(utils::BitWriter * bw, const huffman_coding::enc::HuffmanTree & codes)
 		: m_bit_writer(bw)
 	{
-
+		write_codes(codes);
 	}
 };
+
 }
 }
 }

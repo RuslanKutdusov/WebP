@@ -91,6 +91,15 @@ public:
 	}
 };
 
+class TooBigCodeLength : public Exception
+{
+public:
+	virtual ~TooBigCodeLength()
+	{
+
+	}
+};
+
 }
 }
 

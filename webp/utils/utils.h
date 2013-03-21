@@ -9,6 +9,22 @@ namespace webp
 namespace utils
 {
 
+template <class T, size_t size>
+class stack_array{
+private:
+	T			m_array[size];
+	size_t		m_size;
+public:
+	stack_array()
+		: m_size(size)
+	{
+
+	}
+	virtual ~stack_array(){
+
+	}
+};
+
 template <class T>
 class array
 {
@@ -93,7 +109,11 @@ public:
 	{
 		memset(m_array, c, m_size * sizeof(T));
 	}
+	void sort(int(*compar)(const void *, const void *)){
+		qsort(m_array, m_size, sizeof(T), compar);
+	}
 };
+
 typedef array<uint32_t> pixel_array;
 typedef array<uint8_t> byte_array;
 
