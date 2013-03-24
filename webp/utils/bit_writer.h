@@ -79,8 +79,9 @@ public:
 		for(size_t i = 0; i < m_buffer.size() - 1; i++)
 			fwrite(&m_buffer.at(i)[0], BitWriterBufferArraySize, 1, fp);
 		int32_t last_array_index = m_buffer.size() - 1;
+		size_t prev_len = BitWriterBufferArraySize * last_array_index;
 		if (last_array_index != -1)
-			fwrite(&m_buffer.at(last_array_index)[0], m_buffer.at(last_array_index).size(), 1, fp);
+			fwrite(&m_buffer.at(last_array_index)[0], m_size - prev_len, 1, fp);
 
 		fclose(fp);
 	}
