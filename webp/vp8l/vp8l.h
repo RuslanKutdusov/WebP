@@ -277,6 +277,7 @@ private:
 				int32_t red   = huffman.read_symbol(huffman_io::RED);
 				int32_t blue  = huffman.read_symbol(huffman_io::BLUE);
 				int32_t alpha = huffman.read_symbol(huffman_io::ALPHA);
+				printf("%08X\n",  (alpha << 24) + (red << 16) + (S << 8) + blue);
 				data[data_fills++] = (alpha << 24) + (red << 16) + (S << 8) + blue;
 				x++;
 				if (x >= xsize)
@@ -473,6 +474,8 @@ public:
 			huffman_io::enc::VP8_LOSSLESS_HUFFMAN hio(&m_bit_writer, *trees[i]);
 		}
 		WriteLZ77CodedImage(xsize, ysize, trees, lz77);
+		for(size_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++)
+			delete trees[i];
 	}
 	void WriteSpatiallyCodedImage(const size_t & xsize, const size_t & ysize, const utils::pixel_array & data){
 		m_bit_writer.WriteBit(0);//no color cache
@@ -505,6 +508,8 @@ public:
 			huffman_io::enc::VP8_LOSSLESS_HUFFMAN hio(&m_bit_writer, *trees[i]);
 		}
 		WriteLZ77CodedImage(xsize, ysize, trees, lz77);
+		for(size_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++)
+			delete trees[i];
 	}
 	void WriteLZ77CodedImage(const size_t & xsize, const size_t & ysize, huffman_coding::enc::HuffmanTree ** trees,
 								const lz77::LZ77<uint32_t> & lz77){
@@ -514,10 +519,23 @@ public:
 				symbol_t r = *utils::RED(lz77.output()[i].symbol);
 				symbol_t b = *utils::BLUE(lz77.output()[i].symbol);
 				symbol_t a = *utils::ALPHA(lz77.output()[i].symbol);
-				m_bit_writer.WriteBits(trees[huffman_io::GREEN]->get_codes()[g], trees[huffman_io::GREEN]->get_lengths()[g]);
-				m_bit_writer.WriteBits(trees[huffman_io::RED]->get_codes()[r], trees[huffman_io::RED]->get_lengths()[r]);
-				m_bit_writer.WriteBits(trees[huffman_io::BLUE]->get_codes()[b], trees[huffman_io::BLUE]->get_lengths()[b]);
-				m_bit_writer.WriteBits(trees[huffman_io::ALPHA]->get_codes()[a], trees[huffman_io::ALPHA]->get_lengths()[a]);
+
+				if (trees[huffman_io::GREEN]->get_num_nodes() > 1)
+					m_bit_writer.WriteBits(trees[huffman_io::GREEN]->get_codes()[g], trees[huffman_io::GREEN]->get_lengths()[g]);
+
+				if (trees[huffman_io::RED]->get_num_nodes() > 1)
+					m_bit_writer.WriteBits(trees[huffman_io::RED]->get_codes()[r], trees[huffman_io::RED]->get_lengths()[r]);
+
+				if (trees[huffman_io::BLUE]->get_num_nodes() > 1)
+					m_bit_writer.WriteBits(trees[huffman_io::BLUE]->get_codes()[b], trees[huffman_io::BLUE]->get_lengths()[b]);
+
+				if (trees[huffman_io::ALPHA]->get_num_nodes() > 1)
+					m_bit_writer.WriteBits(trees[huffman_io::ALPHA]->get_codes()[a], trees[huffman_io::ALPHA]->get_lengths()[a]);
+
+				printf("%s\n", huffman_io::bit2str(trees[huffman_io::GREEN]->get_codes()[g], trees[huffman_io::GREEN]->get_lengths()[g]));
+				printf("%s\n", huffman_io::bit2str(trees[huffman_io::RED]->get_codes()[r], trees[huffman_io::RED]->get_lengths()[r]));
+				printf("%s\n", huffman_io::bit2str(trees[huffman_io::BLUE]->get_codes()[b], trees[huffman_io::BLUE]->get_lengths()[b]));
+				printf("%s\n", huffman_io::bit2str(trees[huffman_io::ALPHA]->get_codes()[a], trees[huffman_io::ALPHA]->get_lengths()[a]));
 				printf("ARGB (%08X)\n", lz77.output()[i].symbol);
 			}
 			else{
@@ -525,7 +543,7 @@ public:
 				symbol_t g;
 				size_t extra_bits_count, extra_bits;
 				lz77::prefix_coding_encode(lz77.output()[i].length, g, extra_bits_count, extra_bits);
-				printf("length=( prfx(%u, %u, %u), %s) ", g, extra_bits, extra_bits_count, huffman_io::bit2str(trees[huffman_io::GREEN]->get_codes()[g + 256], trees[huffman_io::GREEN]->get_lengths()[g + 256]));
+				//printf("length=( prfx(%u, %u, %u), %s) ", g, extra_bits, extra_bits_count, huffman_io::bit2str(trees[huffman_io::GREEN]->get_codes()[g + 256], trees[huffman_io::GREEN]->get_lengths()[g + 256]));
 				m_bit_writer.WriteBits(trees[huffman_io::GREEN]->get_codes()[g + 256], trees[huffman_io::GREEN]->get_lengths()[g + 256]);
 				if (extra_bits_count > 0)
 					m_bit_writer.WriteBits(extra_bits, extra_bits_count);
@@ -533,9 +551,10 @@ public:
 				symbol_t dist;
 				uint32_t dist_code = lz77::distance2dist_code(xsize, lz77.output()[i].distance);
 				lz77::prefix_coding_encode(dist_code, dist, extra_bits_count, extra_bits);
-				printf("distance=(%u prfx(%u, %u, %u), %s)\n", dist_code, dist, extra_bits, extra_bits_count,
-									huffman_io::bit2str(trees[huffman_io::DIST_PREFIX]->get_codes()[dist], trees[huffman_io::DIST_PREFIX]->get_lengths()[dist]));
-				m_bit_writer.WriteBits(trees[huffman_io::DIST_PREFIX]->get_codes()[dist], trees[huffman_io::DIST_PREFIX]->get_lengths()[dist]);
+				//printf("distance=(%u prfx(%u, %u, %u), %s)\n", dist_code, dist, extra_bits, extra_bits_count,
+					//				huffman_io::bit2str(trees[huffman_io::DIST_PREFIX]->get_codes()[dist], trees[huffman_io::DIST_PREFIX]->get_lengths()[dist]));
+				if (trees[huffman_io::DIST_PREFIX]->get_num_nodes() > 1)
+					m_bit_writer.WriteBits(trees[huffman_io::DIST_PREFIX]->get_codes()[dist], trees[huffman_io::DIST_PREFIX]->get_lengths()[dist]);
 				if (extra_bits_count > 0)
 					m_bit_writer.WriteBits(extra_bits, extra_bits_count);
 			}

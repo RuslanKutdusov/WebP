@@ -340,6 +340,7 @@ void encode(char * fn){
 
 int main(int argc, char * argv[])
 {
+	webp::vp8l::huffman_io::init_array();
 	if (strncmp(argv[1], "-d", 2) == 0){
 		webp::WebP_DECODER webp(argv[2]);
 		std::string output = argv[2];

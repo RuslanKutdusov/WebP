@@ -47,24 +47,24 @@ enum MetaHuffmanCode
 	DIST_PREFIX = 4
 };
 
-#define MAX_ALLOWED_CODE_LENGTH      15
+#define MAX_ALLOWED_CODE_LENGTH      64
 
 #define NON_ZERO_REPS_CODE		MAX_ALLOWED_CODE_LENGTH + 1
 #define ZERO_11_REPS_CODE 		MAX_ALLOWED_CODE_LENGTH + 2
 #define ZERO_138_REPS_CODE 	MAX_ALLOWED_CODE_LENGTH + 3
 
-#define MAX_ALLOWED_CODE_LENGTH_OF_RLE_TREE 	7
+#define MAX_ALLOWED_CODE_LENGTH_OF_RLE_TREE 	32
 static const size_t BITS_COUNT_FOR_RLE_CODE_LENGTHS = (int)log2f(MAX_ALLOWED_CODE_LENGTH_OF_RLE_TREE) + 1;//3//log2 MAX_ALLOWED_CODE_LENGTH_OF_RLE_TREE
 
 //static const size_t kCodeLengthCodes = 19;
 #define RLE_CODES_COUNT 		MAX_ALLOWED_CODE_LENGTH + 4
 static const size_t  BITS_COUNTS_FOR_RLE_CODES_COUNT = (int)log2f(RLE_CODES_COUNT);//4//log2 RLE_CODES_COUNT - 1
 static int kCodeLengthCodeOrder[RLE_CODES_COUNT] = {
-  17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
-};
+		ZERO_11_REPS_CODE, ZERO_138_REPS_CODE, 0, 1, 2, 3, 4, 5, NON_ZERO_REPS_CODE};//, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+//};
 
 static void init_array(){
-	kCodeLengthCodeOrder[0] = ZERO_11_REPS_CODE;
+	/*kCodeLengthCodeOrder[0] = ZERO_11_REPS_CODE;
 	kCodeLengthCodeOrder[1] = ZERO_138_REPS_CODE;
 	kCodeLengthCodeOrder[2] = 0;
 	kCodeLengthCodeOrder[3] = 1;
@@ -72,7 +72,7 @@ static void init_array(){
 	kCodeLengthCodeOrder[5] = 3;
 	kCodeLengthCodeOrder[6] = 4;
 	kCodeLengthCodeOrder[7] = 5;
-	kCodeLengthCodeOrder[8] = 16;
+	kCodeLengthCodeOrder[8] = 16;*/
 	for(size_t i = 9; i < RLE_CODES_COUNT; i++)
 		kCodeLengthCodeOrder[i] = i - 3;
 }
@@ -98,7 +98,7 @@ private:
 	int read_symbol(const webp::huffman_coding::dec::HuffmanTree& tree) const
 	{
 		webp::huffman_coding::dec::HuffmanTree::iterator iter = tree.root();
-		uint32_t bits = 0;
+		/*uint32_t bits = 0;
 		uint32_t len = 0;
 		while(!(*iter).is_leaf()){
 			uint32_t bit = m_bit_reader->ReadBits(1);
@@ -107,9 +107,9 @@ private:
 			iter.next(bit);
 			len++;
 		}
-		printf("%s\n", bit2str(bits, len));/*
+		printf("%s\n", bit2str(bits, len));*/
 		while(!(*iter).is_leaf())
-			iter.next(m_bit_reader->ReadBits(1));*/
+			iter.next(m_bit_reader->ReadBits(1));
 		return (*iter).symbol();
 	}
 	void read_code_length(const utils::array<code_length_t> & code_length_code_lengths, const size_t & num_symbols, utils::array<code_length_t> & code_lengths)
@@ -407,12 +407,14 @@ private:
 		uint32_t symbols[2] = { 0, 0 };
 
 		// считаем кол-во символов, у которых длина кода != 0
-		for (size_t i = 0; i < codes.get_num_symbols() && count < 3; ++i){
+		for (size_t i = 0; i < codes.get_num_symbols(); ++i){
 			if (codes.get_lengths()[i] != 0){
 				if (count < 2)
 					symbols[count] = i;
 				++count;
 			}
+			if (count > 2)
+				break;
 		}
 
 		if (count == 0) {   //символов нет, сл-но может об этом сказать с помощью simple length code

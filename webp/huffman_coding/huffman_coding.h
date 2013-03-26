@@ -667,6 +667,7 @@ private:
 	utils::array<code_t> m_codes;
 	size_t						m_num_symbols;
 	std::list<HuffmanNode*>		m_all_nodes;
+	size_t						m_num_nodes;
 	static int sort_roots(const void * n1, const void * n2){
 		const HuffmanNode * n1_ = *(HuffmanNode**)n1;
 		const HuffmanNode * n2_ = *(HuffmanNode**)n2;
@@ -730,7 +731,7 @@ public:
 
 	}
 	HuffmanTree(const histoarray & histo, const size_t & max_allowed_code_length)//, const uint32_t & size)
-		: m_roots(histo.size()), m_code_lengths(histo.size()), m_codes(histo.size()), m_num_symbols(histo.size())
+		: m_roots(histo.size()), m_code_lengths(histo.size()), m_codes(histo.size()), m_num_symbols(histo.size()), m_num_nodes(0)
 	{
 		m_code_lengths.fill(0);
 		m_codes.fill(0);
@@ -742,6 +743,7 @@ public:
 				continue;
 			}
 			m_roots[i] = new HuffmanNode(NULL, NULL, histo[i], i);
+			m_num_nodes++;
 			m_all_nodes.push_back(m_roots[i]);
 		}
 		m_roots.sort(sort_roots);
@@ -759,7 +761,15 @@ public:
 			n2 = m_roots[1];
 
 		}
-		make_codes(0, 0, m_roots[0]);
+		//если только один символ
+		if (m_roots[0]->m_left0 == NULL && m_roots[0]->m_right1 == NULL){
+			uint16_t symbol = m_roots[0]->m_symbol;
+			m_code_lengths[symbol] = 1;
+			m_codes[symbol] = 0;
+		}
+		else
+			make_codes(0, 0, m_roots[0]);
+
 		size_t max_code_length = 0;
 		for(size_t i = 0; i < m_num_symbols; i++)
 			if (m_code_lengths[i] > max_code_length)
@@ -773,11 +783,11 @@ public:
 			if (m_code_lengths[i] != 0)
 				reverse_code(m_codes[i], m_code_lengths[i]);
 		}
-		for(size_t i = 0; i < m_num_symbols; i++){
+		/*for(size_t i = 0; i < m_num_symbols; i++){
 			if (m_code_lengths[i] != 0){
 				printf("%u %u %s\n", i, m_code_lengths[i], bit2str(m_codes[i], m_code_lengths[i]));
 			}
-		}
+		}*/
 	}
 	const utils::array<code_length_t> & get_lengths() const{
 		return m_code_lengths;
@@ -787,6 +797,9 @@ public:
 	}
 	const size_t & get_num_symbols() const{
 		return m_num_symbols;
+	}
+	const size_t & get_num_nodes() const{
+		return m_num_nodes;
 	}
 	virtual ~HuffmanTree(){
 		release();
