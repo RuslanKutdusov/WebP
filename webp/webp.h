@@ -17,7 +17,7 @@ enum FILE_FORMAT
 	FILE_FORMAT_LOSSLESS
 };
 
-class WebP
+class WebP_DECODER
 {
 private:
 	uint32_t m_file_size;
@@ -25,7 +25,7 @@ private:
 	utils::array<uint32_t> m_argb_image;
 	uint32_t					m_image_width;
 	uint32_t					m_image_height;
-	WebP()
+	WebP_DECODER()
 	{
 
 	}
@@ -71,7 +71,7 @@ private:
 			throw exception::UnsupportedVP8();
 	}
 public:
-	WebP(const std::string & file_name)
+	WebP_DECODER(const std::string & file_name)
 	{
 		uint32_t file_length;
 		utils::array<uint8_t> buf;
@@ -79,7 +79,6 @@ public:
 		if (file_length < WEBP_FILE_HEADER_LENGTH)
 			throw exception::InvalidWebPFileFormat();
 		init(buf);
-		printf("%lu\n", m_argb_image.size());
 	}
 	void save2png(const std::string & file_name)
 	{
@@ -143,12 +142,36 @@ public:
 		png_destroy_write_struct(&png, &info);
 		fclose(fp);
 	}
-	virtual ~WebP()
+	virtual ~WebP_DECODER()
 	{
 
 	}
 };
 
+
+class WebP_ENCODER{
+public:
+	WebP_ENCODER(const utils::pixel_array & argb_image, const size_t & width, const size_t & height, const std::string & output){
+		vp8l::VP8_LOSSLESS_ENCODER encoder(argb_image, width, height);
+
+		FILE * fp = NULL;
+		#ifdef LINUX
+		  fp = fopen(output.c_str(), "wb");
+		#endif
+		#ifdef WINDOWS
+		  fopen_s(&fp, output.c_str(), "wb");
+		#endif
+		if (fp == NULL)
+			throw exception::FileOperationException();
+		fwrite("RIFF", 1, 4, fp);
+		uint32_t filesize = encoder.get_bit_writer().size() + 8;
+		fwrite(&filesize, 4, 1, fp);
+		fwrite("WEBP", 1, 4, fp);
+		fwrite("VP8L", 1, 4, fp);
+		fclose(fp);
+		encoder.get_bit_writer().save2file(output);
+	}
+};
 
 }
 

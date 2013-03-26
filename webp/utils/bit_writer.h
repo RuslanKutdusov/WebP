@@ -62,12 +62,12 @@ public:
 		for(uint32_t i = 0; i < count; i++)
 			WriteBit((bits >> i) & 1u);
 	}
-	void save2file(const std::string & file_name)
+	void save2file(const std::string & file_name) const
 	{
 		FILE * fp = NULL;
 
 		#ifdef LINUX
-		  fp = fopen(file_name.c_str(), "wb");
+		  fp = fopen(file_name.c_str(), "ab+");
 		#endif
 		#ifdef WINDOWS
 		  fopen_s(&fp, file_name.c_str(), "wb");
@@ -84,6 +84,9 @@ public:
 			fwrite(&m_buffer.at(last_array_index)[0], m_size - prev_len, 1, fp);
 
 		fclose(fp);
+	}
+	const size_t size() const{
+		return m_size;
 	}
 	friend class BitWriterTest;
 };

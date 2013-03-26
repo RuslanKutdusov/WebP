@@ -5,6 +5,7 @@
 #include "../utils/bit_readed.h"
 #include "../utils/bit_writer.h"
 #include "../huffman_coding/huffman_coding.h"
+#include <math.h>
 
 namespace webp
 {
@@ -12,6 +13,20 @@ namespace vp8l
 {
 namespace huffman_io
 {
+
+
+static char * bit2str(uint16_t b, uint8_t len)
+	{
+		char * str = (char*)malloc(len + 1);
+		int i ;
+		for(i = 0; i < len; i++)
+		{
+			int shift = len - i - 1;
+			str[i] = ((b >> shift) & 1) == 1 ? '1' : '0';
+		}
+		str[len] = '\0';
+		return str;
+	}
 
 /*	Мета код Хаффмана состоит из 5 кодов Хаффмана
 *	-первый для зеленого + префикс длины совпадения LZ77 + цветового кэша, алфавит для этого кода состоит из 256 символово для зеленого, 24 для префикса и еще несколько,
@@ -32,10 +47,35 @@ enum MetaHuffmanCode
 	DIST_PREFIX = 4
 };
 
-static const size_t kCodeLengthCodes = 19;
-static const int kCodeLengthCodeOrder[kCodeLengthCodes] = {
+#define MAX_ALLOWED_CODE_LENGTH      15
+
+#define NON_ZERO_REPS_CODE		MAX_ALLOWED_CODE_LENGTH + 1
+#define ZERO_11_REPS_CODE 		MAX_ALLOWED_CODE_LENGTH + 2
+#define ZERO_138_REPS_CODE 	MAX_ALLOWED_CODE_LENGTH + 3
+
+#define MAX_ALLOWED_CODE_LENGTH_OF_RLE_TREE 	7
+static const size_t BITS_COUNT_FOR_RLE_CODE_LENGTHS = (int)log2f(MAX_ALLOWED_CODE_LENGTH_OF_RLE_TREE) + 1;//3//log2 MAX_ALLOWED_CODE_LENGTH_OF_RLE_TREE
+
+//static const size_t kCodeLengthCodes = 19;
+#define RLE_CODES_COUNT 		MAX_ALLOWED_CODE_LENGTH + 4
+static const size_t  BITS_COUNTS_FOR_RLE_CODES_COUNT = (int)log2f(RLE_CODES_COUNT);//4//log2 RLE_CODES_COUNT - 1
+static int kCodeLengthCodeOrder[RLE_CODES_COUNT] = {
   17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 };
+
+static void init_array(){
+	kCodeLengthCodeOrder[0] = ZERO_11_REPS_CODE;
+	kCodeLengthCodeOrder[1] = ZERO_138_REPS_CODE;
+	kCodeLengthCodeOrder[2] = 0;
+	kCodeLengthCodeOrder[3] = 1;
+	kCodeLengthCodeOrder[4] = 2;
+	kCodeLengthCodeOrder[5] = 3;
+	kCodeLengthCodeOrder[6] = 4;
+	kCodeLengthCodeOrder[7] = 5;
+	kCodeLengthCodeOrder[8] = 16;
+	for(size_t i = 9; i < RLE_CODES_COUNT; i++)
+		kCodeLengthCodeOrder[i] = i - 3;
+}
 
 namespace dec
 {
@@ -58,8 +98,18 @@ private:
 	int read_symbol(const webp::huffman_coding::dec::HuffmanTree& tree) const
 	{
 		webp::huffman_coding::dec::HuffmanTree::iterator iter = tree.root();
+		uint32_t bits = 0;
+		uint32_t len = 0;
+		while(!(*iter).is_leaf()){
+			uint32_t bit = m_bit_reader->ReadBits(1);
+			bits <<= 1;
+			bits |= bit;
+			iter.next(bit);
+			len++;
+		}
+		printf("%s\n", bit2str(bits, len));/*
 		while(!(*iter).is_leaf())
-			iter.next(m_bit_reader->ReadBits(1));
+			iter.next(m_bit_reader->ReadBits(1));*/
 		return (*iter).symbol();
 	}
 	void read_code_length(const utils::array<code_length_t> & code_length_code_lengths, const size_t & num_symbols, utils::array<code_length_t> & code_lengths)
@@ -82,7 +132,6 @@ private:
 			max_symbol = num_symbols;
 		////////////////////////////////////////////////////
 		///////////////////////////////////////////////////
-
 
 		symbol = 0;
 		code_length_t prev_code_len = 8;
@@ -152,17 +201,16 @@ private:
 		}
 		else
 		{
-			utils::array<code_length_t> code_length_code_lengths(kCodeLengthCodes);
+			utils::array<code_length_t> code_length_code_lengths(RLE_CODES_COUNT);
 			code_length_code_lengths.fill(0);
-			size_t num_codes = m_bit_reader->ReadBits(4) + 4;
-			if (num_codes > kCodeLengthCodes)
+			size_t num_codes = m_bit_reader->ReadBits(BITS_COUNTS_FOR_RLE_CODES_COUNT) + 4;
+			if (num_codes > RLE_CODES_COUNT)
 				throw exception::InvalidHuffman();
 
 			utils::array<code_length_t> code_lengths(alphabet_size);
 			code_lengths.fill(0);
-
 			for (size_t i = 0; i < num_codes; ++i)
-				code_length_code_lengths[kCodeLengthCodeOrder[i]] = m_bit_reader->ReadBits(3);
+				code_length_code_lengths[kCodeLengthCodeOrder[i]] = m_bit_reader->ReadBits(BITS_COUNT_FOR_RLE_CODE_LENGTHS);
 
 			read_code_length(code_length_code_lengths, alphabet_size, code_lengths);
 			m_huffman_trees.push_back(webp::huffman_coding::dec::HuffmanTree(code_lengths));
@@ -207,41 +255,140 @@ public:
 namespace enc
 {
 
+class RLESequence{
+private:
+	struct RLESequenceElement{
+		uint16_t	m_code_length;
+		uint8_t		m_extra_bits;
+		RLESequenceElement(const uint16_t & code_length, const uint16_t & extra_bits)
+				: m_code_length(code_length), m_extra_bits(extra_bits)
+		{
+
+		}
+	};
+	std::vector<RLESequenceElement> m_code_lengths;
+	void zero_reps(size_t reps) {
+		while(reps >= 1){
+			//если длина серии <3, то просто записываем ее
+			if (reps < 3){
+				for(size_t j = 0; j < reps; j++)
+					add(0, 0);
+				break;
+			}
+			//если длина серии <11, то пишем код ZERO_11_REPS_CODE, и экстра биты = длина серии - 3(чтобы влезть в 3 бита)
+			else if (reps < 11){
+				add(ZERO_11_REPS_CODE, reps - 3);
+				break;
+			}
+			//если длина серии <139, то пишем код ZERO_138_REPS_CODE, и экстра биты = длина серии - 11(чтобы влезть в 7 бит)
+			else if (reps < 139){
+				add(ZERO_138_REPS_CODE, reps - 11);
+				break;
+			}
+			//иначе пишем код 18, и экстра биты = ZERO_138_REPS_CODE, уменьшаем длину серии и в цикл
+			else{
+				add(ZERO_138_REPS_CODE, 138 - 11);
+				reps -= 138;
+			}
+		}
+	}
+	void code_length_reps(size_t reps, const code_length_t & prev_code_length,
+						const code_length_t & code_length) {
+		if (prev_code_length != code_length){
+			add(code_length, 0);
+			reps--;
+		}
+		while(reps >= 1){
+			if (reps < 3){
+				for(size_t j = 0; j < reps; j++)
+					add(code_length, 0);
+				break;
+			}
+			else if (reps < 7){
+				add(NON_ZERO_REPS_CODE, reps - 3);
+				break;
+			}
+			else{
+				add(NON_ZERO_REPS_CODE, 6 - 3);
+				reps -= 6;
+			}
+		}
+	}
+	void add(const uint16_t & code_length, const uint8_t & extra_bits){
+		//printf("(%u %u)\n", code_length, extra_bits);
+		m_code_lengths.push_back(RLESequenceElement(code_length, extra_bits));
+	}
+	RLESequence(){
+
+	}
+public:
+	RLESequence(const huffman_coding::enc::HuffmanTree & tree){
+		uint16_t prev_code_length = 8;
+		//RLE
+		for(size_t i = 0; i < tree.get_num_symbols(); ){
+			//текущее значение
+			code_length_t code_length = tree.get_lengths()[i];
+			//индекс на след значение
+			size_t k = i + 1;
+			//кол-во повторений
+			size_t runs;
+			//определяем до какого индекса, значения повторяются непрерывно
+			while (k < tree.get_num_symbols() && tree.get_lengths()[k] == code_length) ++k;
+			//определяем кол-во повторяющихся значений
+			runs = k - i;
+			//серии повторяющихся 0ей сжимаем одним способом, другие серии - другим способом
+			if (code_length == 0) {
+				zero_reps(runs);
+			}
+			else {
+				code_length_reps(runs, prev_code_length, code_length);
+				prev_code_length = code_length;
+			}
+			i += runs;
+		}
+	}
+	const uint16_t & code_length(size_t i) const{
+		return m_code_lengths[i].m_code_length;
+	}
+	const uint8_t & extra_bits(size_t i) const{
+		return m_code_lengths[i].m_extra_bits;
+	}
+	const size_t size() const{
+		return m_code_lengths.size();
+	}
+};
 
 class VP8_LOSSLESS_HUFFMAN{
 private:
 	utils::BitWriter * m_bit_writer;
-
 	void write_compressed_code(const huffman_coding::enc::HuffmanTree & codes) const{
 		//сжимаем по RLE исходные длины кодов
-		huffman_coding::enc::RLESequence rle_sequence;
-		codes.compress(rle_sequence);
-		utils::array<uint16_t> histo(kCodeLengthCodes);
+		RLESequence rle_sequence(codes);
+		histoarray histo(RLE_CODES_COUNT);
 		histo.fill(0);
 		for(size_t i = 0; i < rle_sequence.size(); i++)
 			++histo[rle_sequence.code_length(i)];
 
-		huffman_coding::enc::HuffmanTree tree_of_rle_sequence(histo, 7);
+		huffman_coding::enc::HuffmanTree tree_of_rle_sequence(histo, MAX_ALLOWED_CODE_LENGTH_OF_RLE_TREE);
 
 
 		//определяем кол-во длин кодов для записи, нулевые длины кодов не пишем
 		//мин. 4 длин кодов
-		size_t code_lengths2write = kCodeLengthCodes;
+		size_t code_lengths2write = RLE_CODES_COUNT;
 		for(; code_lengths2write > 4; --code_lengths2write)
 		{
 			size_t i = kCodeLengthCodeOrder[code_lengths2write - 1];
 			if (tree_of_rle_sequence.get_lengths()[i] != 0)
 				break;
 		}
-		m_bit_writer->WriteBits(code_lengths2write - 4, 4);//пишем кол-во длин кодов
+		m_bit_writer->WriteBits(code_lengths2write - 4, BITS_COUNTS_FOR_RLE_CODES_COUNT);//пишем кол-во длин кодов
 		for(size_t i = 0; i < code_lengths2write; i++)
 		{
 			size_t j = kCodeLengthCodeOrder[i];
-			m_bit_writer->WriteBits(tree_of_rle_sequence.get_lengths()[j], 3);
+			m_bit_writer->WriteBits(tree_of_rle_sequence.get_lengths()[j], BITS_COUNT_FOR_RLE_CODE_LENGTHS);
 		}
 
 		m_bit_writer->WriteBit(0);//незадокументированный бит!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 		//записываем RLE посл-ть
 		for(size_t i = 0; i < rle_sequence.size(); i++){
 			uint16_t sequence_element = rle_sequence.code_length(i);
@@ -254,7 +401,6 @@ private:
 			if (sequence_element == ZERO_138_REPS_CODE)
 				m_bit_writer->WriteBits(extra_bits, 7);
 		}
-
 	}
 	void write_codes(const huffman_coding::enc::HuffmanTree & codes) const{
 		int count = 0;

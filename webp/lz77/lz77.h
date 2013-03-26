@@ -1,5 +1,8 @@
+#pragma once
 #include "../platform.h"
 #include <deque>
+#include "../utils/bit_writer.h"
+#define TEST
 #ifdef TEST
 #include <openssl/sha.h>
 #endif
@@ -10,6 +13,7 @@ namespace webp
 namespace lz77
 {
 //			abab|abab
+
 template <class T>
 class LZ77{
 public:
@@ -58,12 +62,13 @@ private:
 			temp_token.length = 0;
 			bool match = false;
 			const T* sb_stop = data + la_buffer_index;
+			const T* la_stop = data + la_buffer_index + la_buffer_length;
 			for(int j = la_buffer_index - 1; j >= (int)search_buffer_index; j--){
 				const T* search_buffer_iter = &data[j];
 				const T* la_buffer_iter = &data[la_buffer_index];
 				uint32_t length = 0;
 				uint32_t distance = la_buffer_index - j;
-				while(length <= m_max_length && search_buffer_iter != sb_stop){
+				while(length <= m_max_length && search_buffer_iter != sb_stop && la_buffer_iter != la_stop){
 					if (*search_buffer_iter++ == *la_buffer_iter++)
 						length++;
 					else
@@ -78,8 +83,8 @@ private:
 			if (match){
 				m_output.push_back(temp_token);
 
-				la_buffer_index += temp_token.length + 1;
-				la_buffer_length -= temp_token.length + 1;
+				la_buffer_index += temp_token.length ;
+				la_buffer_length -= temp_token.length;
 				if (la_buffer_length > m_max_length)
 					la_buffer_length = 0;
 				if (la_buffer_index - search_buffer_index > m_max_distance){
@@ -95,6 +100,9 @@ private:
 				continue;
 			}
 		}
+		/*for(size_t i = 0; i < m_output.size(); i++){
+			printf("%08X %u %u\n", m_output[i].symbol, m_output[i].distance, m_output[i].length);
+		}*/
 	}
 public:
 	LZ77(const uint32_t & max_distance, const uint32_t & max_length, const utils::array<T> & data)
@@ -121,7 +129,7 @@ public:
 			else{
 				for(size_t i = 0; i < t.length; i++, pointer++)
 					*pointer = *(pointer - t.distance);
-				*pointer++ = t.symbol;
+				//*pointer++ = t.symbol;
 			}
 		}
 		unsigned char hash[20];
@@ -131,6 +139,29 @@ public:
 	}
 #endif
 };
+
+/*
+ * LZ77_prefix_coding_encode
+ * Бросает исключения: нет
+ * Назначение:
+ * длины совпадения и смещения LZ77 закодированы, эта функция декодирует их значения
+ */
+uint32_t prefix_coding_decode(const uint32_t & prefix_code, utils::BitReader & br);
+
+
+/*
+ * LZ77_distance_code2distance
+ * Бросает исключения: нет
+ * Назначение:
+ * коды длины совпадения LZ77 меньшие 120 закодированы, эта функция декодирует их значения
+ */
+uint32_t distance_code2distance(const uint32_t & xsize, const uint32_t & lz77_distance_code);
+
+void prefix_coding_encode(uint32_t distance, uint16_t & symbol,
+									 size_t & extra_bits_count,
+									 size_t & extra_bits_value);
+
+size_t distance2dist_code(const size_t & xsize, const size_t & dist);
 
 }
 }

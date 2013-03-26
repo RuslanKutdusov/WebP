@@ -9,22 +9,6 @@ namespace webp
 namespace utils
 {
 
-template <class T, size_t size>
-class stack_array{
-private:
-	T			m_array[size];
-	size_t		m_size;
-public:
-	stack_array()
-		: m_size(size)
-	{
-
-	}
-	virtual ~stack_array(){
-
-	}
-};
-
 template <class T>
 class array
 {
@@ -73,7 +57,7 @@ public:
 	array(const uint32_t & size)
 		: m_array(new T[size]), m_size(size)
 	{
-
+		fill(0);
 	}
 	virtual ~array()
 	{

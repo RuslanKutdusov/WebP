@@ -3,6 +3,7 @@
 namespace webp{
 namespace huffman_coding{
 
+static const size_t MAX_ALLOWED_CODE_LENGTH = 64;
 
 int make_canonical_codes(const code_length_t* const code_lengths,
 									const size_t & code_lengths_size, utils::array<code_t> & huff_codes)

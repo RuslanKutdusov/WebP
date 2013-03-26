@@ -2,6 +2,8 @@
 #include "webp/webp.h"
 #include "webp/utils/bit_writer.h"
 #include "webp/vp8l/vp8l.h"
+#include "webp/lz77/lz77.h"
+
 
 void PNGAPI error_function(png_structp png, png_const_charp dummy) {
   (void)dummy;  // remove variable-unused warning
@@ -182,13 +184,172 @@ void save_png(const std::string & file_name, const image_t & image){
  		fclose(fp);
 }
 
+void huffman_test(const std::string & fn)
+{
+	//using namespace webp;
+	webp::utils::BitWriter bw;
+	image_t image;
+	read_png(fn, image);
+	int histo_[256] = {0};
+	webp::histoarray histo(256);
+	histo.fill(0);
+	for(size_t i = 0; i < image.image.size(); i++){
+		++histo[*webp::utils::GREEN(image.image[i])];
+		++histo_[*webp::utils::GREEN(image.image[i])];
+	}
+
+	webp::huffman_coding::enc::HuffmanTree tree(histo, 15);
+
+	/*HuffmanTreeCode tree1;
+	tree1.codes = new uint16_t[256];
+	tree1.code_lengths = new uint8_t[256];
+	tree1.num_symbols = 256;
+	VP8LCreateHuffmanTree(histo_, 15, &tree1);
+	for(size_t i = 0; i < 256; i++)
+		printf("%u ", tree1.code_lengths[i]);
+	printf("\n");
+
+	const int CODE_LENGTH_CODES = 19;
+	uint8_t code_length_bitdepth[CODE_LENGTH_CODES] = { 0 };
+	  uint16_t code_length_bitdepth_symbols[CODE_LENGTH_CODES] = { 0 };
+	  const int max_tokens = tree1.num_symbols;
+	  int num_tokens;
+	  HuffmanTreeCode huffman_code;
+	  HuffmanTreeToken* const tokens =
+	      (HuffmanTreeToken*)malloc(sizeof(*tokens) * max_tokens);
+
+	  huffman_code.num_symbols = CODE_LENGTH_CODES;
+	  huffman_code.code_lengths = code_length_bitdepth;
+	  huffman_code.codes = code_length_bitdepth_symbols;
+
+	  num_tokens = VP8LCreateCompressedHuffmanTree(&tree1, tokens, max_tokens);
+
+	    int histogram[CODE_LENGTH_CODES] = { 0 };
+	    int i;
+	    for (i = 0; i < num_tokens; ++i) {
+	    	printf("(%u %u) ", tokens[i].code, tokens[i].extra_bits);
+	      ++histogram[tokens[i].code];
+	    }
+	    printf("\n");
+	    VP8LCreateHuffmanTree(histogram, 7, &huffman_code);
+
+*/
+
+	webp::vp8l::huffman_io::enc::VP8_LOSSLESS_HUFFMAN io(&bw, tree);
+	bw.save2file("huffman");
+
+	uint32_t len;
+	webp::utils::array<uint8_t> buf;
+	webp::utils::read_file("huffman", len, buf);
+	webp::utils::BitReader br(&buf[0], buf.size());
+	webp::vp8l::huffman_io::dec::VP8_LOSSLESS_HUFFMAN io_dec(&br);
+	io_dec.read();
+}
+
+void test(){
+	/*webp::utils::array<uint16_t> histo(5);
+	histo[0] = 24;
+	histo[1] = 6;
+	histo[2] = 56;
+	histo[3] = 12;
+	histo[4] = 45;*/
+	image_t image;
+	read_png("basn3p08.webp.png", image);
+	int histo_[256] = {0};
+	webp::histoarray histo(256);
+	histo.fill(0);
+	for(size_t i = 0; i < image.image.size(); i++){
+		++histo[*webp::utils::RED(image.image[i])];
+		++histo_[*webp::utils::GREEN(image.image[i])];
+	}
+	webp::huffman_coding::enc::HuffmanTree tree(histo, 15);
+}
+
+void lz77test(char * fn){
+
+	image_t image;
+	read_png(fn, image);
+
+	printf("%lu\n", image.image.size());
+
+	/*webp::histoarray histo(256);
+	histo.fill(0);
+	for(size_t i = 0; i < image.image.size(); i++)
+		++histo[*webp::utils::GREEN(image.image[i])];
+
+	for(size_t i = 0; i < 256; i++)
+		if (histo[i] != 0)
+			printf("%u %u\n",i, histo[i]);
+
+	FILE * f = fopen("data", "wb");
+	fwrite(&image.image[0], 4, image.image.size(), f);
+	fclose(f);*/
+
+
+	webp::lz77::LZ77<uint32_t> LZ77_pixel(1024, 128, image.image);
+	printf("%lu\n", LZ77_pixel.output().size());
+	LZ77_pixel.test_unpack(image.image.size());
+	webp::histoarray histo2(256);
+	histo2.fill(0);
+	for(size_t i = 0; i < LZ77_pixel.output().size(); i++)
+		if (LZ77_pixel.output()[i].length == 0 && LZ77_pixel.output()[i].distance == 0)
+			++histo2[*webp::utils::GREEN(LZ77_pixel.output()[i].symbol)];
+
+	/*for(size_t i = 0; i < 256; i++)
+		if (histo2[i] != 0)
+			printf("%u %u\n",i, histo2[i]);*/
+
+	webp::huffman_coding::enc::HuffmanTree tree2(histo2, 15);
+	webp::utils::BitWriter bw;
+	webp::vp8l::huffman_io::enc::VP8_LOSSLESS_HUFFMAN hio(&bw, tree2);
+	bw.save2file("hio");
+
+	uint32_t len;
+	webp::utils::array<uint8_t> buf;
+	webp::utils::read_file("hio", len, buf);
+	webp::utils::BitReader br(&buf[0], buf.size());
+	webp::vp8l::huffman_io::dec::VP8_LOSSLESS_HUFFMAN io_dec(&br);
+	io_dec.read();
+
+	/*for(size_t i = 0; i < 256; i++)
+	{
+		printf("%u %u\n", histo[i], histo2[i]);
+	}*/
+}
+
+void entropy_image(char * fn){
+	webp::vp8l::VP8_LOSSLESS_ENCODER enc;
+	image_t image;
+	read_png(fn, image);
+	enc.WriteEntropyCodedImage(image.width, image.height, image.image);
+
+	enc.m_bit_writer.save2file("entropy_image");
+	webp::utils::array<uint8_t> buf;
+	uint32_t len;
+	webp::utils::read_file("entropy_image", len, buf);
+	image.image.fill(0);
+	webp::vp8l::VP8_LOSSLESS_DECODER dec(&buf[0], len, image.width, image.height, image.image);
+	save_png("out.png", image);
+}
+
+void encode(char * fn){
+	image_t image;
+	read_png(fn, image);
+	webp::WebP_ENCODER encoder(image.image, image.width, image.height, "output.webp");
+}
+
 int main(int argc, char * argv[])
 {
-	webp::WebP webp(argv[1]);
-	webp.save2png(argv[2]);
-	return 0;
-	image_t image;
-	read_png(argv[1], image);
-	webp::vp8l::VP8_LOSSLESS_ENCODER enc(image.image, image.width, image.height);
+	if (strncmp(argv[1], "-d", 2) == 0){
+		webp::WebP_DECODER webp(argv[2]);
+		std::string output = argv[2];
+		output += ".png";
+		webp.save2png(output);
+		return 0;
+	}
+	if (strncmp(argv[1], "-e", 2) == 0){
+		encode(argv[2]);
+		return 0;
+	}
 	return 0;
 }

@@ -7,6 +7,7 @@
 #include "transform.h"
 #include "huffman_io.h"
 #include "../utils/bit_writer.h"
+#include "../lz77/lz77.h"
 //#include <openssl/sha.h>
 #include <png.h>
 #include <set>
@@ -20,37 +21,8 @@ namespace vp8l
 
 
 #define PALLETE_MAX_COLORS 256
-
-struct point
-{
-	int8_t x;
-	int8_t y;
-	point(){}
-	point(int8_t x, int8_t y)
-		: x(x), y(y)
-	{
-
-	}
-};
-
-static const uint32_t BORDER_DISTANCE_CODE = 120;
-static const point dist_codes_diff[BORDER_DISTANCE_CODE] = {
-		point(0, 1), point(1, 0),  point(1, 1),  point(-1, 1), point(0, 2),  point(2, 0),  point(1, 2),  point(-1, 2),
-		point(2, 1),  point(-2, 1), point(2, 2),  point(-2, 2), point(0, 3),  point(3, 0),  point(1, 3),  point(-1, 3),
-		point(3, 1),  point(-3, 1), point(2, 3),  point(-2, 3), point(3, 2),  point(-3, 2), point(0, 4),  point(4, 0),
-		point(1, 4),  point(-1, 4), point(4, 1),  point(-4, 1), point(3, 3),  point(-3, 3), point(2, 4),  point(-2, 4),
-		point(4, 2),  point(-4, 2), point(0, 5),  point(3, 4),  point(-3, 4), point(4, 3),  point(-4, 3), point(5, 0),
-		point(1, 5),  point(-1, 5), point(5, 1),  point(-5, 1), point(2, 5),  point(-2, 5), point(5, 2),  point(-5, 2),
-		point(4, 4),  point(-4, 4), point(3, 5),  point(-3, 5), point(5, 3),  point(-5, 3), point(0, 6),  point(6, 0),
-		point(1, 6),  point(-1, 6), point(6, 1),  point(-6, 1), point(2, 6),  point(-2, 6), point(6, 2),  point(-6, 2),
-		point(4, 5),  point(-4, 5), point(5, 4),  point(-5, 4), point(3, 6),  point(-3, 6), point(6, 3),  point(-6, 3),
-		point(0, 7),  point(7, 0),  point(1, 7),  point(-1, 7), point(5, 5),  point(-5, 5), point(7, 1),  point(-7, 1),
-		point(4, 6),  point(-4, 6), point(6, 4),  point(-6, 4), point(2, 7),  point(-2, 7), point(7, 2),  point(-7, 2),
-		point(3, 7),  point(-3, 7), point(7, 3),  point(-7, 3), point(5, 6),  point(-5, 6), point(6, 5),  point(-6, 5),
-		point(8, 0),  point(4, 7),  point(-4, 7), point(7, 4),  point(-7, 4), point(8, 1),  point(8, 2),  point(6, 6),
-		point(-6, 6), point(8, 3),  point(5, 7),  point(-5, 7), point(7, 5),  point(-7, 5), point(8, 4),  point(6, 7),
-		point(-6, 7), point(7, 6),  point(-7, 6), point(8, 5),  point(7, 7),  point(-7, 7), point(8, 6),  point(8, 7)};
-
+#define LZ77_MAX_DISTANCE 1024
+#define LZ77_MAX_LENGTH 128
 
 
 
@@ -268,38 +240,6 @@ private:
 		return 0;
 	}
 	/*
-	 * LZ77_prefix_coding_encode
-	 * Бросает исключения: нет
-	 * Назначение:
-	 * длины совпадения и смещения LZ77 закодированы, эта функция декодирует их значения
-	 */
-	uint32_t LZ77_prefix_coding_encode(const uint32_t & prefix_code)
-	{
-		if (prefix_code < 4)
-			return prefix_code + 1;
-		uint32_t extra_bits = (prefix_code - 2) >> 1;
-		uint32_t offset = (2 + (prefix_code & 1)) << extra_bits;
-		return offset + m_bit_reader.ReadBits(extra_bits) + 1;
-	}
-	/*
-	 * LZ77_distance_code2distance
-	 * Бросает исключения: нет
-	 * Назначение:
-	 * длины совпадения LZ77 меньшие 120 закодированы, эта функция декодирует их значения
-	 */
-	uint32_t LZ77_distance_code2distance(const uint32_t & xsize, const uint32_t & lz77_distance_code)
-	{
-		if (lz77_distance_code <= BORDER_DISTANCE_CODE)
-		{
-			const point & diff = dist_codes_diff[lz77_distance_code - 1];
-			uint32_t lz77_distance = diff.x + diff.y * xsize;
-			lz77_distance = lz77_distance >= 1 ? lz77_distance : 1;
-			return lz77_distance;
-		}
-		else
-			return lz77_distance_code - BORDER_DISTANCE_CODE;
-	}
-	/*
 	 * SelectMetaHuffman
 	 * Бросает исключения: нет
 	 * Назначение:
@@ -326,7 +266,7 @@ private:
 		uint32_t data_fills = 0;
 		uint32_t last_cached = data_fills;
 		uint32_t x = 0, y = 0;
-		while(data_fills != xsize * ysize)//data.size())
+		while(data_fills != xsize * ysize)
 		{
 			const huffman_io::dec::VP8_LOSSLESS_HUFFMAN & huffman = meta_huffman_info.meta_huffmans[SelectMetaHuffman(meta_huffman_info, x, y)];
 			int32_t S = huffman.read_symbol(huffman_io::GREEN);
@@ -351,10 +291,10 @@ private:
 			else if (S < 256 + 24)
 			{
 				uint32_t prefix_code = S - 256;
-				uint32_t lz77_length = LZ77_prefix_coding_encode(prefix_code);
+				uint32_t lz77_length = lz77::prefix_coding_decode(prefix_code, m_bit_reader);
 				prefix_code = huffman.read_symbol(huffman_io::DIST_PREFIX);
-				uint32_t lz77_distance_code = LZ77_prefix_coding_encode(prefix_code);
-				uint32_t lz77_distance = LZ77_distance_code2distance(xsize, lz77_distance_code);
+				uint32_t lz77_distance_code = lz77::prefix_coding_decode(prefix_code, m_bit_reader);
+				uint32_t lz77_distance = lz77::distance_code2distance(xsize, lz77_distance_code);
 				for(uint32_t i = 0; i < lz77_length; i++, data_fills++)
 				{
 					data[data_fills] = data[data_fills - lz77_distance];
@@ -387,6 +327,11 @@ private:
 		}
 	}
 public:
+	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length, size_t x, size_t y, utils::pixel_array & p)
+		: m_bit_reader(data, data_length)
+	{
+		ReadEntropyCodedImage(x, y, p);
+	}
 	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length, utils::pixel_array & argb_image)
 		: m_bit_reader(data, data_length)
 	{
@@ -415,7 +360,7 @@ public:
 
 class VP8_LOSSLESS_ENCODER
 {
-private:
+public:
 	typedef std::set<uint32_t> pallete_t;
 	struct entropy_t{
 		float 	red_p[256];
@@ -480,12 +425,130 @@ private:
 		m_bit_writer.WriteBit(1);//transform present
 		m_bit_writer.WriteBits(VP8_LOSSLESS_TRANSFORM::COLOR_INDEXING_TRANSFORM, 2);
 	}
+	void write_info(const uint32_t & width, const uint32_t & height){
+		m_bit_writer.WriteBits(0, 32);
+		m_bit_writer.WriteBits('\x2F', 8);
+		m_bit_writer.WriteBits(width - 1, 14);
+		m_bit_writer.WriteBits(height - 1, 14);
+		m_bit_writer.WriteBits(0, 1);
+		m_bit_writer.WriteBits(0, 3);
+	}
+	struct HuffmanTree{
+		histoarray histo;
+		huffman_coding::enc::HuffmanTree * tree;
+		HuffmanTree(const size_t & num_symbols)
+			: histo(num_symbols)
+		{
+			histo.fill(0);
+		}
+	};
+	void WriteEntropyCodedImage(const size_t & xsize, const size_t & ysize, const utils::pixel_array & data){
+		m_bit_writer.WriteBit(0);//no color cache
+
+		lz77::LZ77<uint32_t> lz77(LZ77_MAX_DISTANCE, LZ77_MAX_LENGTH, data);
+
+		histoarray histos[HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE] = { histoarray(256 + 24), histoarray(256), histoarray(256), histoarray(256), histoarray(40)};
+		for(size_t i = 0; i < lz77.output().size(); i++){
+			if (lz77.output()[i].length == 0 && lz77.output()[i].distance == 0){
+				++histos[huffman_io::GREEN][*utils::GREEN(lz77.output()[i].symbol)];
+				++histos[huffman_io::RED][*utils::RED(lz77.output()[i].symbol)];
+				++histos[huffman_io::BLUE][*utils::BLUE(lz77.output()[i].symbol)];
+				++histos[huffman_io::ALPHA][*utils::ALPHA(lz77.output()[i].symbol)];
+			}
+			else{
+				symbol_t symbol;
+				size_t t1,t2;
+				lz77::prefix_coding_encode(lz77.output()[i].length, symbol, t1, t2);
+				++histos[huffman_io::GREEN][symbol + 256];
+
+
+				uint32_t dist_code = lz77::distance2dist_code(xsize, lz77.output()[i].distance);
+				lz77::prefix_coding_encode(dist_code, symbol, t1, t2);
+				++histos[huffman_io::DIST_PREFIX][symbol];
+			}
+		}
+		huffman_coding::enc::HuffmanTree* trees[HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE];
+		for(size_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++){
+			trees[i] = new huffman_coding::enc::HuffmanTree(histos[i], MAX_ALLOWED_CODE_LENGTH);
+			huffman_io::enc::VP8_LOSSLESS_HUFFMAN hio(&m_bit_writer, *trees[i]);
+		}
+		WriteLZ77CodedImage(xsize, ysize, trees, lz77);
+	}
+	void WriteSpatiallyCodedImage(const size_t & xsize, const size_t & ysize, const utils::pixel_array & data){
+		m_bit_writer.WriteBit(0);//no color cache
+		m_bit_writer.WriteBit(0);//no huffman image
+		lz77::LZ77<uint32_t> lz77(LZ77_MAX_DISTANCE, LZ77_MAX_LENGTH, data);
+
+		histoarray histos[HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE] = { histoarray(256 + 24), histoarray(256), histoarray(256), histoarray(256), histoarray(40)};
+		for(size_t i = 0; i < lz77.output().size(); i++){
+			if (lz77.output()[i].length == 0 && lz77.output()[i].distance == 0){
+				++histos[huffman_io::GREEN][*utils::GREEN(lz77.output()[i].symbol)];
+				++histos[huffman_io::RED][*utils::RED(lz77.output()[i].symbol)];
+				++histos[huffman_io::BLUE][*utils::BLUE(lz77.output()[i].symbol)];
+				++histos[huffman_io::ALPHA][*utils::ALPHA(lz77.output()[i].symbol)];
+			}
+			else{
+				symbol_t symbol;
+				size_t t1,t2;
+				lz77::prefix_coding_encode(lz77.output()[i].length, symbol, t1, t2);
+				++histos[huffman_io::GREEN][symbol + 256];
+
+
+				uint32_t dist_code = lz77::distance2dist_code(xsize, lz77.output()[i].distance);
+				lz77::prefix_coding_encode(dist_code, symbol, t1, t2);
+				++histos[huffman_io::DIST_PREFIX][symbol];
+			}
+		}
+		huffman_coding::enc::HuffmanTree* trees[HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE];
+		for(size_t i = 0; i < HUFFMAN_CODES_COUNT_IN_HUFFMAN_META_CODE; i++){
+			trees[i] = new huffman_coding::enc::HuffmanTree(histos[i], MAX_ALLOWED_CODE_LENGTH);
+			huffman_io::enc::VP8_LOSSLESS_HUFFMAN hio(&m_bit_writer, *trees[i]);
+		}
+		WriteLZ77CodedImage(xsize, ysize, trees, lz77);
+	}
+	void WriteLZ77CodedImage(const size_t & xsize, const size_t & ysize, huffman_coding::enc::HuffmanTree ** trees,
+								const lz77::LZ77<uint32_t> & lz77){
+		for(size_t i = 0; i < lz77.output().size(); i++){
+			if (lz77.output()[i].length == 0 && lz77.output()[i].distance == 0){
+				symbol_t g = *utils::GREEN(lz77.output()[i].symbol);
+				symbol_t r = *utils::RED(lz77.output()[i].symbol);
+				symbol_t b = *utils::BLUE(lz77.output()[i].symbol);
+				symbol_t a = *utils::ALPHA(lz77.output()[i].symbol);
+				m_bit_writer.WriteBits(trees[huffman_io::GREEN]->get_codes()[g], trees[huffman_io::GREEN]->get_lengths()[g]);
+				m_bit_writer.WriteBits(trees[huffman_io::RED]->get_codes()[r], trees[huffman_io::RED]->get_lengths()[r]);
+				m_bit_writer.WriteBits(trees[huffman_io::BLUE]->get_codes()[b], trees[huffman_io::BLUE]->get_lengths()[b]);
+				m_bit_writer.WriteBits(trees[huffman_io::ALPHA]->get_codes()[a], trees[huffman_io::ALPHA]->get_lengths()[a]);
+				printf("ARGB (%08X)\n", lz77.output()[i].symbol);
+			}
+			else{
+				printf("LZ77 (%u %u) ",lz77.output()[i].length, lz77.output()[i].distance);
+				symbol_t g;
+				size_t extra_bits_count, extra_bits;
+				lz77::prefix_coding_encode(lz77.output()[i].length, g, extra_bits_count, extra_bits);
+				printf("length=( prfx(%u, %u, %u), %s) ", g, extra_bits, extra_bits_count, huffman_io::bit2str(trees[huffman_io::GREEN]->get_codes()[g + 256], trees[huffman_io::GREEN]->get_lengths()[g + 256]));
+				m_bit_writer.WriteBits(trees[huffman_io::GREEN]->get_codes()[g + 256], trees[huffman_io::GREEN]->get_lengths()[g + 256]);
+				if (extra_bits_count > 0)
+					m_bit_writer.WriteBits(extra_bits, extra_bits_count);
+
+				symbol_t dist;
+				uint32_t dist_code = lz77::distance2dist_code(xsize, lz77.output()[i].distance);
+				lz77::prefix_coding_encode(dist_code, dist, extra_bits_count, extra_bits);
+				printf("distance=(%u prfx(%u, %u, %u), %s)\n", dist_code, dist, extra_bits, extra_bits_count,
+									huffman_io::bit2str(trees[huffman_io::DIST_PREFIX]->get_codes()[dist], trees[huffman_io::DIST_PREFIX]->get_lengths()[dist]));
+				m_bit_writer.WriteBits(trees[huffman_io::DIST_PREFIX]->get_codes()[dist], trees[huffman_io::DIST_PREFIX]->get_lengths()[dist]);
+				if (extra_bits_count > 0)
+					m_bit_writer.WriteBits(extra_bits, extra_bits_count);
+			}
+		}
+	}
 public:
 	VP8_LOSSLESS_ENCODER(const utils::pixel_array & argb_image, const uint32_t & width, const uint32_t & height)
 	{
+		write_info(width, height);
+
 		pallete_t pallete;
 		utils::pixel_array image(argb_image);
-		CreatePallete(image, pallete);
+		/*CreatePallete(image, pallete);
 		if (pallete.size() == 0){//палитры нет
 			entropy_t entropy;
 			entropy_t entropy2;
@@ -495,7 +558,12 @@ public:
 		}
 		else{//палитра есть
 			ApplyColorIndexingTransform(pallete);
-		}
+		}*/
+		m_bit_writer.WriteBit(0);//no transform
+		WriteSpatiallyCodedImage(width, height, image);
+	}
+	const utils::BitWriter & get_bit_writer(){
+		return m_bit_writer;
 	}
 };
 }
