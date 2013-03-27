@@ -70,7 +70,7 @@ public:
 		  fp = fopen(file_name.c_str(), "ab+");
 		#endif
 		#ifdef WINDOWS
-		  fopen_s(&fp, file_name.c_str(), "wb");
+		  fopen_s(&fp, file_name.c_str(), "ab+");
 		#endif
 
 		if (fp == NULL)

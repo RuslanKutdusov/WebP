@@ -1,9 +1,6 @@
 #ifndef PLATFORM_H_
 #define PLATFORM_H_
 
-#define LINUX
-//#define WINDOWS
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -21,6 +18,8 @@
 
 #ifdef WINDOWS
 #include <Windows.h>
+#include <math.h>
+#define log2f(a) (log(a)/log(2))
 #endif
 
 #endif /* PLATFORM_H_ */

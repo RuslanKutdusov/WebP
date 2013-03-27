@@ -30,7 +30,7 @@ struct image_t{
 
   FILE * fp;
 
-#ifdef LINUX
+	#ifdef LINUX
 	  fp = fopen(file_name.c_str(), "rb");
 	#endif
 	#ifdef WINDOWS
@@ -78,10 +78,6 @@ struct image_t{
     has_alpha = !!(color_type & PNG_COLOR_MASK_ALPHA);
   }
 
- /* if (!keep_alpha) {
-    png_set_strip_alpha(png);
-    has_alpha = 0;
-  }*/
 
   num_passes = png_set_interlace_handling(png);
   png_read_update_info(png, info);
@@ -117,92 +113,38 @@ struct image_t{
 		  }
 	  }
   free(rgb);
-
+  
  End:
   fclose(fp);
   return ok;
 }
 
-void save_png(const std::string & file_name, const image_t & image){
-		webp::utils::array<uint8_t> rgb(image.height * image.width * 3);
-		int i = 0;
- 		for(size_t y = 0; y < image.height; y++)
- 			for(size_t x = 0; x < image.width; x++)
- 			{
- 				size_t j = y * image.width + x;
- 				rgb[i++] = (image.image[j] >> 16) & 0x000000ff;
- 				rgb[i++] = (image.image[j] >> 8) & 0x000000ff;
- 				rgb[i++] = (image.image[j] >> 0) & 0x000000ff;
- 			}
-
- 		png_structp png;
- 		png_infop info;
- 		png_uint_32 y;
-
- 		png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
- 		if (png == NULL)
- 			throw webp::exception::PNGError();
-
- 		info = png_create_info_struct(png);
- 		if (info == NULL)
- 		{
- 			png_destroy_write_struct(&png, NULL);
- 			throw  webp::exception::PNGError();
- 		}
-
- 		if (setjmp(png_jmpbuf(png)))
- 		{
- 			png_destroy_write_struct(&png, &info);
- 			throw  webp::exception::PNGError();
- 		}
- 		FILE * fp = NULL;
-
- 		#ifdef LINUX
- 		  fp = fopen(file_name.c_str(), "wb");
- 		#endif
- 		#ifdef WINDOWS
- 		  fopen_s(&fp, file_name.c_str(), "wb");
- 		#endif
- 		if (fp == NULL)
- 		{
- 			png_destroy_write_struct(&png, &info);
- 			throw  webp::exception::FileOperationException();
- 		}
- 		png_init_io(png, fp);
- 		png_set_IHDR(png, info, image.width, image.height, 8,
- 			   PNG_COLOR_TYPE_RGB,
- 			   PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
- 			   PNG_FILTER_TYPE_DEFAULT);
- 		png_write_info(png, info);
- 		for (y = 0; y < image.height; ++y)
- 		{
- 			png_bytep row = rgb + y * image.width * 3;
- 			png_write_rows(png, &row, 1);
- 		}
- 		png_write_end(png, info);
- 		png_destroy_write_struct(&png, &info);
- 		fclose(fp);
-}
-
 void encode(char * fn){
-	image_t image;
-	read_png(fn, image);
-	webp::WebP_ENCODER encoder(image.image, image.width, image.height, "output.webp");
+	
 }
 
 int main(int argc, char * argv[])
 {
 	webp::vp8l::huffman_io::init_array();
-	if (strncmp(argv[1], "-d", 2) == 0){
-		webp::WebP_DECODER webp(argv[2]);
-		std::string output = argv[2];
-		output += ".png";
-		webp.save2png(output);
-		return 0;
+	try{
+		if (argc != 3)
+			return 1;
+		if (strncmp(argv[1], "-d", 2) == 0){
+			webp::WebP_DECODER webp(argv[2]);
+			std::string output = argv[2];
+			output += ".png";
+			webp.save2png(output);
+			return 0;
+		}
+		if (strncmp(argv[1], "-e", 2) == 0){
+			image_t image;
+			read_png(argv[2], image);
+			webp::WebP_ENCODER encoder(image.image, image.width, image.height, "output.webp");
+			return 0;
+		}
 	}
-	if (strncmp(argv[1], "-e", 2) == 0){
-		encode(argv[2]);
-		return 0;
+	catch(webp::exception::Exception & e){
+		std::cout << e.message << std::endl;
 	}
 	return 0;
 }

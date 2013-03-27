@@ -228,7 +228,7 @@ private:
 	struct RLESequenceElement{
 		uint16_t	m_code_length;
 		uint8_t		m_extra_bits;
-		RLESequenceElement(const uint16_t & code_length, const uint16_t & extra_bits)
+		RLESequenceElement(const uint16_t & code_length, const uint8_t & extra_bits)
 				: m_code_length(code_length), m_extra_bits(extra_bits)
 		{
 
@@ -290,7 +290,7 @@ private:
 	}
 public:
 	RLESequence(const huffman_coding::enc::HuffmanTree & tree){
-		uint16_t prev_code_length = 8;
+		code_length_t prev_code_length = 8;
 		//RLE
 		for(size_t i = 0; i < tree.get_num_symbols(); ){
 			//текущее значение
