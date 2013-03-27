@@ -11,10 +11,10 @@ class BitReader
 {
 private:
 	const uint8_t* const			m_data;
-	mutable uint64_t				m_bits_readed;
+	uint64_t				m_bits_readed;
 	size_t							m_length;
-	mutable bool					m_eos;
-	mutable bool					m_error;
+	bool					m_eos;
+	bool					m_error;
 	BitReader & operator=(const BitReader&)
 	{
 		return *this;
@@ -24,7 +24,7 @@ private:
 	{
 
 	}
-	uint32_t ReadBit() const
+	uint32_t ReadBit()
 	{
 		if (m_eos)
 		{
@@ -36,7 +36,7 @@ private:
 		uint64_t bit_index = m_bits_readed - byte_index * 8;
 		byte >>= bit_index;
 		m_bits_readed++;
-		if (byte_index == m_length && m_bits_readed == 8)
+		if (byte_index == m_length && m_bits_readed % 8 == 0)
 			m_eos = true;
 		return (uint32_t)byte & 1;
 	}
@@ -51,7 +51,7 @@ public:
 	{
 
 	}
-	uint32_t ReadBits(uint32_t n_bits) const
+	uint32_t ReadBits(uint32_t n_bits)
 	{
 		uint32_t ret;
 		memset(&ret, 0, sizeof(uint32_t));

@@ -2,6 +2,10 @@
 #ifndef EXCEPTION_H_
 #define EXCEPTION_H_
 
+#include <string>
+#include <stdint.h>
+#include <iostream>
+
 namespace webp
 {
 namespace exception
@@ -10,6 +14,7 @@ namespace exception
 class Exception
 {
 public:
+	std::string message;
 	virtual ~Exception()
 	{
 
@@ -86,6 +91,18 @@ class PNGError : public Exception
 {
 public:
 	virtual ~PNGError()
+	{
+
+	}
+};
+
+class TooBigCodeLength : public Exception
+{
+public:
+	TooBigCodeLength(const uint32_t & max_allowed_code_length, const uint32_t & max_code_length){
+		std::cout << "Too big Huffman code length(" << max_code_length << "). Max allowed code length = " << max_allowed_code_length << std::endl;
+	}
+	virtual ~TooBigCodeLength()
 	{
 
 	}

@@ -21,6 +21,7 @@ private:
 		{
 			delete[] m_array;
 			m_size = 0;
+			m_array = NULL;
 		}
 	}
 	void copy(const array & a)
@@ -57,7 +58,14 @@ public:
 	array(const uint32_t & size)
 		: m_array(new T[size]), m_size(size)
 	{
-
+		fill(0);
+	}
+	void move_ref(array & a){
+		release();
+		this->m_array = a.m_array;
+		this->m_size = a.m_size;
+		a.m_array = NULL;
+		a.m_size = 0;
 	}
 	virtual ~array()
 	{
@@ -93,7 +101,14 @@ public:
 	{
 		memset(m_array, c, m_size * sizeof(T));
 	}
+	void sort(int(*compar)(const void *, const void *)){
+		qsort(m_array, m_size, sizeof(T), compar);
+	}
 };
+
+typedef array<uint32_t> pixel_array;
+typedef array<uint8_t> byte_array;
+
 
 uint8_t * ALPHA(const uint32_t & argb);
 uint8_t * RED(const uint32_t & argb);
