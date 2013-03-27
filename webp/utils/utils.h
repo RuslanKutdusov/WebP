@@ -21,6 +21,7 @@ private:
 		{
 			delete[] m_array;
 			m_size = 0;
+			m_array = NULL;
 		}
 	}
 	void copy(const array & a)
@@ -58,6 +59,13 @@ public:
 		: m_array(new T[size]), m_size(size)
 	{
 		fill(0);
+	}
+	void move_ref(array & a){
+		release();
+		this->m_array = a.m_array;
+		this->m_size = a.m_size;
+		a.m_array = NULL;
+		a.m_size = 0;
 	}
 	virtual ~array()
 	{

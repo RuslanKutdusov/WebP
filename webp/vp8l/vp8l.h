@@ -277,7 +277,6 @@ private:
 				int32_t red   = huffman.read_symbol(huffman_io::RED);
 				int32_t blue  = huffman.read_symbol(huffman_io::BLUE);
 				int32_t alpha = huffman.read_symbol(huffman_io::ALPHA);
-				printf("%08X\n",  (alpha << 24) + (red << 16) + (S << 8) + blue);
 				data[data_fills++] = (alpha << 24) + (red << 16) + (S << 8) + blue;
 				x++;
 				if (x >= xsize)
@@ -328,11 +327,6 @@ private:
 		}
 	}
 public:
-	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length, size_t x, size_t y, utils::pixel_array & p)
-		: m_bit_reader(data, data_length)
-	{
-		ReadEntropyCodedImage(x, y, p);
-	}
 	VP8_LOSSLESS_DECODER(const uint8_t * const data, uint32_t data_length, utils::pixel_array & argb_image)
 		: m_bit_reader(data, data_length)
 	{
@@ -362,7 +356,7 @@ public:
 class VP8_LOSSLESS_ENCODER
 {
 public:
-	typedef std::set<uint32_t> pallete_t;
+	typedef std::set<uint32_t> palette_t;
 	struct entropy_t{
 		float 	red_p[256];
 		float	blue_p[256];
@@ -375,7 +369,7 @@ public:
 	{
 
 	}
-	void CreatePallete(const utils::pixel_array & argb_image, pallete_t & pallete) const{
+	void CreatePallete(const utils::pixel_array & argb_image, palette_t & pallete) const{
 		for(size_t i = 0; i < argb_image.size(); i++){
 			pallete.insert(argb_image[i]);
 			if (pallete.size() > PALLETE_MAX_COLORS){
@@ -415,6 +409,7 @@ public:
 		}
 	}
 	void ApplySubtractGreenTransform(utils::pixel_array & argb_image){
+		printf("Applying subract green transform...\n");
 		for(size_t i = 0; i < argb_image.size(); i++){
 			*utils::RED(argb_image[i])  = (*utils::RED(argb_image[i])  - *utils::GREEN(argb_image[i])) & 0xff;
 			*utils::BLUE(argb_image[i]) = (*utils::BLUE(argb_image[i]) - *utils::GREEN(argb_image[i])) & 0xff;
@@ -422,9 +417,45 @@ public:
 		m_bit_writer.WriteBit(1);//transform present
 		m_bit_writer.WriteBits(VP8_LOSSLESS_TRANSFORM::SUBTRACT_GREEN, 2);
 	}
-	void ApplyColorIndexingTransform(const pallete_t & pallete){
+	size_t ApplyColorIndexingTransform(const size_t & xsize, const size_t & ysize, const  utils::pixel_array & palette_array, utils::pixel_array & argb_image){
+		printf("Applying color indexing transorm\n");
+		printf("	Palette size=%u\n", palette_array.size());
+		uint32_t bits = (palette_array.size() > 16) ? 0 //пиксели не объединены
+					  : (palette_array.size() > 4) ? 1 //2 пикселя объединены, индексы в пределах [0..15]
+					  : (palette_array.size() > 2) ? 2 //4 пикселя объединены, индексы в пределах [0..3]
+					  : 3;//8 пикселей объединены, индексы в пределах [0..1]
+		size_t color_indexing_xsize = DIV_ROUND_UP(xsize, 1 << bits);
+
+		utils::array<uint8_t> row(xsize);
+		utils::pixel_array dst_argb_image(color_indexing_xsize * ysize);
+
+		uint32_t * src = &argb_image[0];
+		uint32_t * dst = &dst_argb_image[0];
+
+		for (size_t y = 0; y < ysize; ++y) {
+			for (size_t x = 0; x < xsize; ++x) {
+				const uint32_t pix = src[x];
+				 for (size_t i = 0; i < palette_array.size(); ++i) {
+					if (pix == palette_array[i]) {
+						row[x] = i;
+						break;
+					}
+				}
+			}
+			BundleColorMap(&row[0], xsize, bits, dst);
+			src += xsize;
+			dst += color_indexing_xsize;
+		}
+		argb_image.move_ref(dst_argb_image);
+
 		m_bit_writer.WriteBit(1);//transform present
 		m_bit_writer.WriteBits(VP8_LOSSLESS_TRANSFORM::COLOR_INDEXING_TRANSFORM, 2);
+		m_bit_writer.WriteBits(palette_array.size() - 1, 8);
+
+		for (size_t i = palette_array.size() - 1; i >= 1; --i)
+			PixelsSub(&palette_array[i], palette_array[i - 1]);
+		WriteEntropyCodedImage(palette_array.size(), 1, palette_array);
+		return color_indexing_xsize;
 	}
 	void write_info(const uint32_t & width, const uint32_t & height){
 		m_bit_writer.WriteBits(0, 32);
@@ -531,19 +562,11 @@ public:
 
 				if (trees[huffman_io::ALPHA]->get_num_nodes() > 1)
 					m_bit_writer.WriteBits(trees[huffman_io::ALPHA]->get_codes()[a], trees[huffman_io::ALPHA]->get_lengths()[a]);
-
-				printf("%s\n", huffman_io::bit2str(trees[huffman_io::GREEN]->get_codes()[g], trees[huffman_io::GREEN]->get_lengths()[g]));
-				printf("%s\n", huffman_io::bit2str(trees[huffman_io::RED]->get_codes()[r], trees[huffman_io::RED]->get_lengths()[r]));
-				printf("%s\n", huffman_io::bit2str(trees[huffman_io::BLUE]->get_codes()[b], trees[huffman_io::BLUE]->get_lengths()[b]));
-				printf("%s\n", huffman_io::bit2str(trees[huffman_io::ALPHA]->get_codes()[a], trees[huffman_io::ALPHA]->get_lengths()[a]));
-				printf("ARGB (%08X)\n", lz77.output()[i].symbol);
 			}
 			else{
-				printf("LZ77 (%u %u) ",lz77.output()[i].length, lz77.output()[i].distance);
 				symbol_t g;
 				size_t extra_bits_count, extra_bits;
 				lz77::prefix_coding_encode(lz77.output()[i].length, g, extra_bits_count, extra_bits);
-				//printf("length=( prfx(%u, %u, %u), %s) ", g, extra_bits, extra_bits_count, huffman_io::bit2str(trees[huffman_io::GREEN]->get_codes()[g + 256], trees[huffman_io::GREEN]->get_lengths()[g + 256]));
 				m_bit_writer.WriteBits(trees[huffman_io::GREEN]->get_codes()[g + 256], trees[huffman_io::GREEN]->get_lengths()[g + 256]);
 				if (extra_bits_count > 0)
 					m_bit_writer.WriteBits(extra_bits, extra_bits_count);
@@ -551,8 +574,6 @@ public:
 				symbol_t dist;
 				uint32_t dist_code = lz77::distance2dist_code(xsize, lz77.output()[i].distance);
 				lz77::prefix_coding_encode(dist_code, dist, extra_bits_count, extra_bits);
-				//printf("distance=(%u prfx(%u, %u, %u), %s)\n", dist_code, dist, extra_bits, extra_bits_count,
-					//				huffman_io::bit2str(trees[huffman_io::DIST_PREFIX]->get_codes()[dist], trees[huffman_io::DIST_PREFIX]->get_lengths()[dist]));
 				if (trees[huffman_io::DIST_PREFIX]->get_num_nodes() > 1)
 					m_bit_writer.WriteBits(trees[huffman_io::DIST_PREFIX]->get_codes()[dist], trees[huffman_io::DIST_PREFIX]->get_lengths()[dist]);
 				if (extra_bits_count > 0)
@@ -561,25 +582,29 @@ public:
 		}
 	}
 public:
-	VP8_LOSSLESS_ENCODER(const utils::pixel_array & argb_image, const uint32_t & width, const uint32_t & height)
+	VP8_LOSSLESS_ENCODER(const utils::pixel_array & argb_image, const size_t & width, const size_t & height)
 	{
+		printf("Encoding ARGB Image %ux%u %u bytes\n", width, height, argb_image.size() * 4);
 		write_info(width, height);
 
-		pallete_t pallete;
+		palette_t palette;
 		utils::pixel_array image(argb_image);
-		/*CreatePallete(image, pallete);
-		if (pallete.size() == 0){//палитры нет
-			entropy_t entropy;
-			entropy_t entropy2;
-			AnalyzeEntropy(image, entropy);
+		CreatePallete(image, palette);
+		size_t _width = width;
+		if (palette.size() == 0){//палитры нет
 			ApplySubtractGreenTransform(image);
-			AnalyzeEntropy(image, entropy2);
 		}
 		else{//палитра есть
-			ApplyColorIndexingTransform(pallete);
-		}*/
+			utils::pixel_array palette_array(palette.size());
+			size_t i = 0;
+			for (palette_t::iterator iter = palette.begin(); iter != palette.end(); ++iter)
+				palette_array[i++] = *iter;
+			_width = ApplyColorIndexingTransform(width, height, palette_array, image);
+		}
+		printf("No more transforms\nWriting spatially coded image..\n");
 		m_bit_writer.WriteBit(0);//no transform
-		WriteSpatiallyCodedImage(width, height, image);
+		WriteSpatiallyCodedImage(_width, height, image);
+		printf("Done, VP8L Encoded stream length %u\n", m_bit_writer.size());
 	}
 	const utils::BitWriter & get_bit_writer(){
 		return m_bit_writer;

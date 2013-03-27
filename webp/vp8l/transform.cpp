@@ -12,6 +12,12 @@ void PixelsSum(uint32_t* a, uint32_t b)
 	*a = (alpha_and_green & 0xff00ff00u) | (red_and_blue & 0x00ff00ffu);
 }
 
+void PixelsSub(uint32_t* a, uint32_t b) {
+  const uint32_t alpha_and_green = 0x00ff00ffu + (*a & 0xff00ff00u) - (b & 0xff00ff00u);
+  const uint32_t red_and_blue = 0xff00ff00u + (*a & 0x00ff00ffu) - (b & 0x00ff00ffu);
+  *a = (alpha_and_green & 0xff00ff00u) | (red_and_blue & 0x00ff00ffu);
+}
+
 uint32_t Average2(const uint32_t & a, const uint32_t & b)
 {
 	uint32_t ret;
@@ -77,6 +83,26 @@ uint32_t ClampAddSubtractHalf(const uint32_t & a, const uint32_t & b)
 		*byte_ret = Clamp(*byte_a + (*byte_a - *byte_b) / 2);
 	}
 	return ret;
+}
+
+void BundleColorMap(const uint8_t* const row, int width,
+                           int xbits, uint32_t* const dst) {
+  int x;
+  if (xbits > 0) {
+    const int bit_depth = 1 << (3 - xbits);
+    const int mask = (1 << xbits) - 1;
+    uint32_t code = 0xff000000;
+    for (x = 0; x < width; ++x) {
+      const int xsub = x & mask;
+      if (xsub == 0) {
+        code = 0xff000000;
+      }
+      code |= row[x] << (8 + bit_depth * xsub);
+      dst[x >> xbits] = code;
+    }
+  } else {
+    for (x = 0; x < width; ++x) dst[x] = 0xff000000 | (row[x] << 8);
+  }
 }
 
 }

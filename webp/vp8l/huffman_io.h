@@ -15,19 +15,6 @@ namespace huffman_io
 {
 
 
-static char * bit2str(uint16_t b, uint8_t len)
-	{
-		char * str = (char*)malloc(len + 1);
-		int i ;
-		for(i = 0; i < len; i++)
-		{
-			int shift = len - i - 1;
-			str[i] = ((b >> shift) & 1) == 1 ? '1' : '0';
-		}
-		str[len] = '\0';
-		return str;
-	}
-
 /*	Мета код Хаффмана состоит из 5 кодов Хаффмана
 *	-первый для зеленого + префикс длины совпадения LZ77 + цветового кэша, алфавит для этого кода состоит из 256 символово для зеленого, 24 для префикса и еще несколько,
 *		в зависимости от размера цветового кэша
@@ -98,16 +85,6 @@ private:
 	int read_symbol(const webp::huffman_coding::dec::HuffmanTree& tree) const
 	{
 		webp::huffman_coding::dec::HuffmanTree::iterator iter = tree.root();
-		/*uint32_t bits = 0;
-		uint32_t len = 0;
-		while(!(*iter).is_leaf()){
-			uint32_t bit = m_bit_reader->ReadBits(1);
-			bits <<= 1;
-			bits |= bit;
-			iter.next(bit);
-			len++;
-		}
-		printf("%s\n", bit2str(bits, len));*/
 		while(!(*iter).is_leaf())
 			iter.next(m_bit_reader->ReadBits(1));
 		return (*iter).symbol();
@@ -220,15 +197,6 @@ public:
 	/*
 	 * Исключение: InvalidHuffman
 	 */
-	VP8_LOSSLESS_HUFFMAN(utils::BitReader * bit_reader)
-		: m_bit_reader(bit_reader)
-	{
-
-
-	}
-	void read(){
-		read_code(256);
-	}
 	VP8_LOSSLESS_HUFFMAN(utils::BitReader * bit_reader, const uint32_t & color_cache_size)
 		: m_bit_reader(bit_reader)
 	{
@@ -315,7 +283,6 @@ private:
 		}
 	}
 	void add(const uint16_t & code_length, const uint8_t & extra_bits){
-		//printf("(%u %u)\n", code_length, extra_bits);
 		m_code_lengths.push_back(RLESequenceElement(code_length, extra_bits));
 	}
 	RLESequence(){

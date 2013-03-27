@@ -13,11 +13,13 @@ namespace vp8l
 {
 
 void PixelsSum(uint32_t* a, uint32_t b);
+void PixelsSub(uint32_t* a, uint32_t b);
 uint32_t Average2(const uint32_t & a, const uint32_t & b);
 uint32_t Select(uint32_t T, uint32_t L, uint32_t TL);
 int32_t Clamp(const int32_t & a);
 uint32_t ClampAddSubtractFull(const uint32_t & a, const uint32_t & b, const uint32_t & c);
 uint32_t ClampAddSubtractHalf(const uint32_t & a, const uint32_t & b);
+void BundleColorMap(const uint8_t* const row, int width,  int xbits, uint32_t* const dst);
 
 struct ColorTransformElement
 {
