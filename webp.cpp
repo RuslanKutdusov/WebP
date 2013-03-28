@@ -1,8 +1,5 @@
 #include <iostream>
 #include "webp/webp.h"
-#include "webp/utils/bit_writer.h"
-#include "webp/vp8l/vp8l.h"
-#include "webp/lz77/lz77.h"
 
 
 void PNGAPI error_function(png_structp png, png_const_charp dummy) {
@@ -119,27 +116,70 @@ struct image_t{
   return ok;
 }
 
-void encode(char * fn){
-	
-}
+ void print_help(){
+	 std::cout << "WebP Decoded/Encoder\n";
+	 std::cout << "\t-h - this help\n";
+	 std::cout << "\t-d|-e input_file_name output_file_name - decode|encode input file to output file\n";
+ }
+
 
 int main(int argc, char * argv[])
 {
 	webp::vp8l::huffman_io::init_array();
+	std::string input;
+	std::string output;
+	bool encode = false;
+	bool decode = false;
+	for(++argv; argv[0]; ++argv){
+		if (argv[0] == std::string("-d"))
+			decode = true;
+		else
+		if (argv[0] == std::string("-e"))
+			encode = true;
+		else
+		if (argv[0] == std::string("-h")){
+			print_help();
+			return 0;
+		}
+		else{
+			if (input.size() == 0)
+				input = argv[0];
+			else if (output.size() == 0)
+				output = argv[0];
+			else{
+				printf("What you mean? %s\n", argv[0]);
+				print_help();
+				return 1;
+			}
+		}
+	}
+
+	if ((encode && decode) || (!encode && !decode)){
+		printf("Specify key -d or -e\n");
+		print_help();
+		return 1;
+	}
+	if (input.size() == 0){
+		printf("Specify input file name\n");
+		print_help();
+		return 1;
+	}
+	if (output.size() == 0){
+		printf("Specify output file name\n");
+		print_help();
+		return 1;
+	}
+
 	try{
-		if (argc != 3)
-			return 1;
-		if (strncmp(argv[1], "-d", 2) == 0){
-			webp::WebP_DECODER webp(argv[2]);
-			std::string output = argv[2];
-			output += ".png";
+		if (decode){
+			webp::WebP_DECODER webp(input);
 			webp.save2png(output);
 			return 0;
 		}
-		if (strncmp(argv[1], "-e", 2) == 0){
+		if (encode){
 			image_t image;
-			read_png(argv[2], image);
-			webp::WebP_ENCODER encoder(image.image, image.width, image.height, "output.webp");
+			read_png(input, image);
+			webp::WebP_ENCODER encoder(image.image, image.width, image.height, output);
 			return 0;
 		}
 	}

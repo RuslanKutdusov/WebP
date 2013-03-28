@@ -130,6 +130,28 @@ public:
 	}
 };
 
+class InvalidARGBImage : public Exception
+{
+public:
+	InvalidARGBImage(){
+		message = "Invalid ARGB image";
+	}
+	virtual ~InvalidARGBImage(){
+
+	}
+};
+
+class TooBigARGBImage : public Exception
+{
+public:
+	TooBigARGBImage(const size_t & max_size){
+		std::cout << "Too big ARGB Image. Max allowed width(height)=" << max_size << std::endl;
+	}
+	virtual ~TooBigARGBImage(){
+
+	}
+};
+
 }
 }
 

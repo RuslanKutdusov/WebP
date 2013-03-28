@@ -151,7 +151,8 @@ public:
 
 class WebP_ENCODER{
 public:
-	WebP_ENCODER(const utils::pixel_array & argb_image, const size_t & width, const size_t & height, const std::string & output){
+	WebP_ENCODER(const utils::pixel_array & argb_image, const size_t & width, const size_t & height, const std::string & output)
+	{
 		vp8l::VP8_LOSSLESS_ENCODER encoder(argb_image, width, height);
 
 		FILE * fp = NULL;
