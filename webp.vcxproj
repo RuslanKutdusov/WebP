@@ -82,19 +82,23 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="webp.cpp" />
+    <ClCompile Include="webp\huffman_coding\huffman_coding.cpp" />
+    <ClCompile Include="webp\lz77\lz77.cpp" />
     <ClCompile Include="webp\utils\utils.cpp" />
-    <ClCompile Include="webp\vp8\transform.cpp" />
+    <ClCompile Include="webp\vp8l\transform.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="webp\exception\exception.h" />
-    <ClInclude Include="webp\huffman\huffman.h" />
+    <ClInclude Include="webp\huffman_coding\huffman_coding.h" />
+    <ClInclude Include="webp\lz77\lz77.h" />
     <ClInclude Include="webp\platform.h" />
     <ClInclude Include="webp\utils\bit_readed.h" />
+    <ClInclude Include="webp\utils\bit_writer.h" />
     <ClInclude Include="webp\utils\utils.h" />
-    <ClInclude Include="webp\vp8\color_cache.h" />
-    <ClInclude Include="webp\vp8\huffman.h" />
-    <ClInclude Include="webp\vp8\transform.h" />
-    <ClInclude Include="webp\vp8\vp8.h" />
+    <ClInclude Include="webp\vp8l\color_cache.h" />
+    <ClInclude Include="webp\vp8l\huffman_io.h" />
+    <ClInclude Include="webp\vp8l\transform.h" />
+    <ClInclude Include="webp\vp8l\vp8l.h" />
     <ClInclude Include="webp\webp.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

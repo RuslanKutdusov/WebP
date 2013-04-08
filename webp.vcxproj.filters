@@ -21,7 +21,13 @@
     <ClCompile Include="webp\utils\utils.cpp">
       <Filter>Файлы исходного кода</Filter>
     </ClCompile>
-    <ClCompile Include="webp\vp8\transform.cpp">
+    <ClCompile Include="webp\huffman_coding\huffman_coding.cpp">
+      <Filter>Файлы исходного кода</Filter>
+    </ClCompile>
+    <ClCompile Include="webp\lz77\lz77.cpp">
+      <Filter>Файлы исходного кода</Filter>
+    </ClCompile>
+    <ClCompile Include="webp\vp8l\transform.cpp">
       <Filter>Файлы исходного кода</Filter>
     </ClCompile>
   </ItemGroup>
@@ -35,25 +41,31 @@
     <ClInclude Include="webp\exception\exception.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
-    <ClInclude Include="webp\huffman\huffman.h">
-      <Filter>Заголовочные файлы</Filter>
-    </ClInclude>
     <ClInclude Include="webp\utils\bit_readed.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
     <ClInclude Include="webp\utils\utils.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
-    <ClInclude Include="webp\vp8\vp8.h">
+    <ClInclude Include="webp\huffman_coding\huffman_coding.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
-    <ClInclude Include="webp\vp8\transform.h">
+    <ClInclude Include="webp\lz77\lz77.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
-    <ClInclude Include="webp\vp8\color_cache.h">
+    <ClInclude Include="webp\utils\bit_writer.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
-    <ClInclude Include="webp\vp8\huffman.h">
+    <ClInclude Include="webp\vp8l\color_cache.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="webp\vp8l\huffman_io.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="webp\vp8l\transform.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="webp\vp8l\vp8l.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
   </ItemGroup>

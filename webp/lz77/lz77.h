@@ -2,10 +2,6 @@
 #include "../platform.h"
 #include <deque>
 #include "../utils/bit_writer.h"
-#define TEST
-#ifdef TEST
-#include <openssl/sha.h>
-#endif
 
 
 namespace webp
@@ -26,16 +22,10 @@ public:
 			: distance(dist), length(len), symbol(s){}
 	};
 private:
-#ifdef TEST
-	unsigned char source_hash[20];
-#endif
 	std::deque<token>	m_output;
 	uint32_t			m_max_distance;
 	uint32_t			m_max_length;
 	void pack(const T* data, const uint32_t & size){
-#ifdef TEST
-		SHA1((unsigned char*)data, size, source_hash);
-#endif
 		size_t i = 0;
 		uint32_t search_buffer_index = 0;
 		uint32_t la_buffer_index = 0;
@@ -100,9 +90,6 @@ private:
 				continue;
 			}
 		}
-		/*for(size_t i = 0; i < m_output.size(); i++){
-			printf("%08X %u %u\n", m_output[i].symbol, m_output[i].distance, m_output[i].length);
-		}*/
 	}
 public:
 	LZ77(const uint32_t & max_distance, const uint32_t & max_length, const utils::array<T> & data)
@@ -118,26 +105,6 @@ public:
 	const std::deque<token> & output() const{
 		return m_output;
 	}
-#ifdef TEST
-	void test_unpack(const size_t & size){
-		T* buf = new T[size];
-		T* pointer = buf;
-		for(size_t i = 0; i < m_output.size(); i++){
-			token & t = m_output[i];
-			if (t.distance == 0 && t.length == 0)
-				*pointer++ = t.symbol;
-			else{
-				for(size_t i = 0; i < t.length; i++, pointer++)
-					*pointer = *(pointer - t.distance);
-				//*pointer++ = t.symbol;
-			}
-		}
-		unsigned char hash[20];
-		SHA1((unsigned char*)buf, size, hash);
-		printf("hash is ok=%d\n", memcmp(hash, source_hash, 20));
-		delete[] buf;
-	}
-#endif
 };
 
 /*

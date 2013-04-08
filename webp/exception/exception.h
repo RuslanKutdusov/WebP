@@ -15,6 +15,10 @@ class Exception
 {
 public:
 	std::string message;
+	Exception()
+		: message("Exception")
+	{
+	}
 	virtual ~Exception()
 	{
 
@@ -28,7 +32,7 @@ private:
 public:
 	FileOperationException()
 	{
-
+		message = "File operation exception";
 	}
 	/*FileOperationException(int errno_)
 		: m_errno(errno_)
@@ -44,6 +48,9 @@ public:
 class MemoryAllocationException : public Exception
 {
 public:
+	MemoryAllocationException(){
+		message = "Memory allocation exception";
+	}
 	virtual ~MemoryAllocationException()
 	{
 
@@ -54,6 +61,9 @@ public:
 class InvalidWebPFileFormat : public Exception
 {
 public:
+	InvalidWebPFileFormat(){
+		message = "Invalid WebP File format";
+	}
 	virtual ~InvalidWebPFileFormat()
 	{
 
@@ -63,6 +73,9 @@ public:
 class UnsupportedVP8 : public Exception
 {
 public:
+	UnsupportedVP8(){
+		message = "VP8 is unsupported";
+	}
 	virtual ~UnsupportedVP8()
 	{
 
@@ -72,6 +85,9 @@ public:
 class InvalidVP8L : public Exception
 {
 public:
+	InvalidVP8L(){
+		message = "Invalid VP8L";
+	}
 	virtual ~InvalidVP8L()
 	{
 
@@ -81,6 +97,9 @@ public:
 class InvalidHuffman : public Exception
 {
 public:
+	InvalidHuffman(){
+		message = "Invalid format";
+	}
 	virtual ~InvalidHuffman()
 	{
 
@@ -90,6 +109,9 @@ public:
 class PNGError : public Exception
 {
 public:
+	PNGError(){
+		message = "PNG error";
+	}
 	virtual ~PNGError()
 	{
 
@@ -104,6 +126,28 @@ public:
 	}
 	virtual ~TooBigCodeLength()
 	{
+
+	}
+};
+
+class InvalidARGBImage : public Exception
+{
+public:
+	InvalidARGBImage(){
+		message = "Invalid ARGB image";
+	}
+	virtual ~InvalidARGBImage(){
+
+	}
+};
+
+class TooBigARGBImage : public Exception
+{
+public:
+	TooBigARGBImage(const size_t & max_size){
+		std::cout << "Too big ARGB Image. Max allowed width(height)=" << max_size << std::endl;
+	}
+	virtual ~TooBigARGBImage(){
 
 	}
 };

@@ -23,7 +23,7 @@ namespace vp8l
 #define PALLETE_MAX_COLORS 256
 #define LZ77_MAX_DISTANCE 1024
 #define LZ77_MAX_LENGTH 128
-
+#define MAX_ARGB_IMAGE_SIZE 16384
 
 
 
@@ -584,6 +584,10 @@ public:
 public:
 	VP8_LOSSLESS_ENCODER(const utils::pixel_array & argb_image, const size_t & width, const size_t & height)
 	{
+		if (argb_image.size() == 0 || width == 0 || height == 0)
+			throw exception::InvalidARGBImage();
+		if (width > MAX_ARGB_IMAGE_SIZE || height > MAX_ARGB_IMAGE_SIZE)
+			throw exception::TooBigARGBImage(MAX_ARGB_IMAGE_SIZE);
 		printf("Encoding ARGB Image %ux%u %u bytes\n", width, height, argb_image.size() * 4);
 		write_info(width, height);
 
